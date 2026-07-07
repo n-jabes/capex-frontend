@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
+  FoldVertical,
   MoreHorizontal,
   Plus,
   Pencil,
@@ -20,12 +21,12 @@ import {
 import {
   Collapsible,
   CollapsibleContent,
-  CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { useCapex } from "@/context/CapexContext";
 import type { CapexTreeNode } from "@/types/capex";
 import {
+  collapseToChildTypeLabel,
   getChildTypeForParent,
   nodeTypeLabel,
   toSelectedNode,
@@ -33,6 +34,12 @@ import {
 import { AddChildDialog } from "@/components/capex/AddChildDialog";
 import { RenameDialog } from "@/components/capex/RenameDialog";
 import { FeatureEntrySheet } from "@/components/capex/FeatureEntrySheet";
+import { useTreeExpansion } from "@/components/capex/TreeExpansionContext";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const typeIcons: Record<CapexTreeNode["type"], string> = {
   country: "🌍",
@@ -52,10 +59,14 @@ interface TreeNodeProps {
 export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
   const { selectedNode, setSelectedNode, addChild, renameNode, deleteNode } =
     useCapex();
-  const [expanded, setExpanded] = useState(depth < 3);
+  const { isExpanded, setExpanded, collapseNodeToDirectChildren } =
+    useTreeExpansion();
   const [addOpen, setAddOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [featureSheetOpen, setFeatureSheetOpen] = useState(false);
+
+  const expanded = isExpanded(node.id);
+  const collapseLabel = collapseToChildTypeLabel(node.type);
 
   const isSelected = selectedNode?.id === node.id;
   const canAddChild = getChildTypeForParent(node.type) !== null;
@@ -67,15 +78,25 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
     setSelectedNode(toSelectedNode(node));
   };
 
+  const handleRowClick = () => {
+    handleSelect();
+    if (hasChildren) {
+      setExpanded(node.id, !expanded);
+    }
+  };
+
   const handleAddChild = (child: CapexTreeNode) => {
     addChild(node.id, child);
-    setExpanded(true);
+    setExpanded(node.id, true);
     setSelectedNode(toSelectedNode(child));
   };
 
   return (
     <>
-      <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <Collapsible
+        open={expanded}
+        onOpenChange={(open) => setExpanded(node.id, open)}
+      >
         <div
           className={cn(
             "group flex items-center gap-1 rounded-md py-1 pr-1 hover:bg-muted/60",
@@ -83,31 +104,22 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
           )}
           style={{ paddingLeft: `${depth * 16 + 4}px` }}
         >
-          <CollapsibleTrigger
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-sm transition-colors hover:bg-muted"
-            onClick={(e) => {
-              if (!hasChildren) {
-                e.preventDefault();
-                handleSelect();
-              }
-            }}
-          >
-            {hasChildren ? (
-              expanded ? (
-                <ChevronDown className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronRight className="h-3.5 w-3.5" />
-              )
-            ) : (
-              <span className="w-3.5" />
-            )}
-          </CollapsibleTrigger>
-
           <button
             type="button"
-            className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm"
-            onClick={handleSelect}
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-md text-left text-sm"
+            onClick={handleRowClick}
           >
+            <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center">
+              {hasChildren ? (
+                expanded ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )
+              ) : (
+                <span className="w-3.5" />
+              )}
+            </span>
             <span className="text-base leading-none">{typeIcons[node.type]}</span>
             <span className="truncate font-medium">{node.name}</span>
             <span className="hidden text-[10px] uppercase tracking-wide text-muted-foreground sm:inline">
@@ -115,9 +127,24 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
             </span>
           </button>
 
+          {hasChildren && collapseLabel && (
+            <Tooltip>
+              <TooltipTrigger
+                className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  collapseNodeToDirectChildren(node);
+                }}
+              >
+                <FoldVertical className="h-3.5 w-3.5" />
+              </TooltipTrigger>
+              <TooltipContent side="top">{collapseLabel}</TooltipContent>
+            </Tooltip>
+          )}
+
           <DropdownMenu>
             <DropdownMenuTrigger
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 data-[popup-open]:opacity-100"
+              className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 data-[popup-open]:opacity-100"
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>

@@ -18,6 +18,10 @@ export const metadata: Metadata = {
   title: "Telecom CAPEX Visibility Platform",
   description:
     "CAPEX visibility and license utilization platform for telecom operators",
+  icons: {
+    icon: "/capex logo.png",
+    apple: "/capex logo.png",
+  },
 };
 
 export default function RootLayout({

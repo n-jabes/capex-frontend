@@ -51,7 +51,7 @@ export function RenameDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-2 py-2">
-          <Label>Name</Label>
+          <Label required={!readOnly}>Name</Label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}

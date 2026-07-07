@@ -64,6 +64,7 @@ export interface FeatureDetailMetrics extends SummaryMetrics {
 }
 
 export interface AppSettings {
+  defaultCompanies: string[];
   defaultDeliveries: string[];
   defaultNetworkDomains: string[];
   defaultNodeNames: string[];

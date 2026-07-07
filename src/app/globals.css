@@ -127,4 +127,20 @@
   html {
     @apply font-sans;
   }
+  button:not(:disabled),
+  a[href],
+  [role="button"]:not([aria-disabled="true"]),
+  label[for],
+  summary,
+  [data-slot="button"],
+  [data-slot="tooltip-trigger"],
+  [data-slot="dropdown-menu-trigger"],
+  [data-slot="select-trigger"],
+  [data-slot="tabs-trigger"] {
+    @apply cursor-pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"] {
+    @apply cursor-not-allowed;
+  }
 }

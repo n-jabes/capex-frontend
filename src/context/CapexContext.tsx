@@ -4,9 +4,11 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   type ReactNode,
 } from "react";
+import { DEFAULT_COMPANIES } from "@/data/defaultCompanies";
 import { DEFAULT_DELIVERIES } from "@/data/defaultDeliveries";
 import { DEFAULT_NETWORK_DOMAINS } from "@/data/defaultNetworkDomains";
 import { DEFAULT_NODE_NAMES } from "@/data/defaultNodeNames";
@@ -31,6 +33,7 @@ const TREE_KEY = "capex-tree-data";
 const SETTINGS_KEY = "capex-app-settings";
 
 const defaultSettings: AppSettings = {
+  defaultCompanies: [...DEFAULT_COMPANIES],
   defaultDeliveries: [...DEFAULT_DELIVERIES],
   defaultNetworkDomains: [...DEFAULT_NETWORK_DOMAINS],
   defaultNodeNames: [...DEFAULT_NODE_NAMES],
@@ -59,6 +62,7 @@ interface CapexContextValue {
     purchases: Array<{ featureId: string; purchase: FeaturePurchaseData }>,
   ) => void;
   updateSettings: (updater: (prev: AppSettings) => AppSettings) => void;
+  addCountry: (countryName: string) => void;
 }
 
 const CapexContext = createContext<CapexContextValue | null>(null);
@@ -78,6 +82,15 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   );
 
   const isHydrated = treeHydrated && settingsHydrated;
+
+  useEffect(() => {
+    if (!settingsHydrated) return;
+    if (settings.defaultCompanies) return;
+    setSettings((prev) => ({
+      ...prev,
+      defaultCompanies: [...DEFAULT_COMPANIES],
+    }));
+  }, [settingsHydrated, settings.defaultCompanies, setSettings]);
 
   const addChild = useCallback(
     (parentId: string, child: CapexTreeNode) => {
@@ -154,6 +167,19 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     [setSettings],
   );
 
+  const addCountry = useCallback(
+    (countryName: string) => {
+      const country: CapexTreeNode = {
+        id: generateId(),
+        type: "country",
+        name: countryName,
+        children: [],
+      };
+      setTree((prev) => [...prev, country]);
+    },
+    [setTree],
+  );
+
   const value = useMemo(
     () => ({
       tree,
@@ -166,6 +192,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       deleteNode,
       addFeaturePurchases,
       updateSettings,
+      addCountry,
     }),
     [
       tree,
@@ -178,6 +205,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       deleteNode,
       addFeaturePurchases,
       updateSettings,
+      addCountry,
     ],
   );
 

@@ -264,7 +264,9 @@ export function FeatureEntrySheet({
               <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-xs">Current License Qty</Label>
+                    <Label className="text-xs" required>
+                      Current License Qty
+                    </Label>
                     <Input
                       type="number"
                       min={0}
@@ -275,7 +277,9 @@ export function FeatureEntrySheet({
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">New License Qty</Label>
+                    <Label className="text-xs" required>
+                      New License Qty
+                    </Label>
                     <Input
                       type="number"
                       min={0}
@@ -297,7 +301,9 @@ export function FeatureEntrySheet({
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Vendor</Label>
+                    <Label className="text-xs" required>
+                      Vendor
+                    </Label>
                     <Input
                       value={activeRow.vendor}
                       onChange={(e) => updateActive({ vendor: e.target.value })}

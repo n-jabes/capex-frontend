@@ -8,10 +8,11 @@ import {
   StringListSection,
   FeatureCatalogSection,
   NodeNameDBMappingSection,
+  CountriesSection,
 } from "@/components/settings/SettingsSections";
 
 export default function SettingsPage() {
-  const { settings, updateSettings, isHydrated } = useCapex();
+  const { tree, settings, updateSettings, addCountry, isHydrated } = useCapex();
 
   if (!isHydrated) {
     return (
@@ -40,6 +41,40 @@ export default function SettingsPage() {
           to administrators only.
         </AlertDescription>
       </Alert>
+
+      <CountriesSection
+        countries={tree.map((country) => ({
+          id: country.id,
+          name: country.name,
+          companies: country.children.map((company) => ({
+            id: company.id,
+            name: company.name,
+          })),
+        }))}
+        onAddCountry={addCountry}
+      />
+
+      <StringListSection
+        title="Default Companies"
+        description="Configure reusable company names shared across countries. Users can select these when adding a company under a country in the CAPEX tree."
+        items={settings.defaultCompanies ?? []}
+        onAdd={(value) =>
+          updateSettings((s) => ({
+            ...s,
+            defaultCompanies: [...(s.defaultCompanies ?? []), value],
+          }))
+        }
+        onRemove={(index) =>
+          updateSettings((s) => ({
+            ...s,
+            defaultCompanies: (s.defaultCompanies ?? []).filter(
+              (_, i) => i !== index,
+            ),
+          }))
+        }
+        addLabel="Add Default Company"
+        placeholder="e.g. YAS CAPEX"
+      />
 
       <StringListSection
         title="Default Deliveries"

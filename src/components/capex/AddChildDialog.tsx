@@ -46,6 +46,8 @@ export function AddChildDialog({
 
   const presets = (() => {
     switch (childType) {
+      case "company":
+        return settings.defaultCompanies ?? [];
       case "delivery":
         return settings.defaultDeliveries;
       case "networkDomain":
@@ -110,7 +112,7 @@ export function AddChildDialog({
 
         {childType === "nodeNameDB" ? (
           <div className="space-y-2 py-2">
-            <Label>Select Node Name DB</Label>
+            <Label required>Select Node Name DB</Label>
             <p className="text-xs text-muted-foreground">
               Node Name DBs are predefined catalog entries shared across all countries.
               Type to filter the list.
@@ -134,7 +136,7 @@ export function AddChildDialog({
               <TabsTrigger value="custom">Custom name</TabsTrigger>
             </TabsList>
             <TabsContent value="preset" className="space-y-2 pt-2">
-              <Label>Preset {label}</Label>
+              <Label required>Preset {label}</Label>
               <Select
                 value={selectedPreset}
                 onValueChange={(v) => setSelectedPreset(v ?? "")}
@@ -152,7 +154,7 @@ export function AddChildDialog({
               </Select>
             </TabsContent>
             <TabsContent value="custom" className="space-y-2 pt-2">
-              <Label>Custom {label} name</Label>
+              <Label required>Custom {label} name</Label>
               <Input
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}

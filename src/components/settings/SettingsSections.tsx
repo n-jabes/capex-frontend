@@ -66,7 +66,9 @@ function AddStringItemDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2 py-2">
-          <Label htmlFor="string-item-value">{fieldLabel}</Label>
+          <Label htmlFor="string-item-value" required>
+            {fieldLabel}
+          </Label>
           <Input
             id="string-item-value"
             value={value}
@@ -289,7 +291,9 @@ export function FeatureCatalogSection({
           </DialogHeader>
           <div className="grid gap-3 py-2">
             <div className="space-y-2">
-              <Label htmlFor="feature-name">Feature name</Label>
+              <Label htmlFor="feature-name" required>
+                Feature name
+              </Label>
               <Input
                 id="feature-name"
                 value={name}
@@ -298,7 +302,9 @@ export function FeatureCatalogSection({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="feature-unit">Unit</Label>
+              <Label htmlFor="feature-unit" required>
+                Unit
+              </Label>
               <Input
                 id="feature-unit"
                 value={unit}
@@ -307,7 +313,9 @@ export function FeatureCatalogSection({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="feature-price">Unit price ($)</Label>
+              <Label htmlFor="feature-price" required>
+                Unit price ($)
+              </Label>
               <Input
                 id="feature-price"
                 type="number"
@@ -319,7 +327,7 @@ export function FeatureCatalogSection({
               />
             </div>
             <div className="space-y-2">
-              <Label>Node Name DB</Label>
+              <Label required>Node Name DB</Label>
               <Select
                 value={nodeNameDBId}
                 onValueChange={(v) => setNodeNameDBId(v ?? "")}
@@ -343,6 +351,104 @@ export function FeatureCatalogSection({
             </Button>
             <Button onClick={handleAdd} disabled={!canSubmit}>
               Add Feature
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+export function CountriesSection({
+  countries,
+  onAddCountry,
+}: {
+  countries: Array<{
+    id: string;
+    name: string;
+    companies: Array<{ id: string; name: string }>;
+  }>;
+  onAddCountry: (countryName: string) => void;
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [countryName, setCountryName] = useState("");
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+    setCountryName("");
+  }, [dialogOpen]);
+
+  const handleAdd = () => {
+    const trimmedCountry = countryName.trim();
+    if (!trimmedCountry) return;
+    onAddCountry(trimmedCountry);
+    setDialogOpen(false);
+  };
+
+  const canSubmit = !!countryName.trim();
+
+  return (
+    <>
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Countries</CardTitle>
+          <CardDescription>
+            Manage telecom markets in the CAPEX tree. Add companies under each
+            country from the CAPEX Tree page using preset or custom names.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <ul className="space-y-2">
+            {countries.map((country) => (
+              <li
+                key={country.id}
+                className="rounded-md border px-3 py-2 text-sm"
+              >
+                <p className="font-medium">{country.name}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {country.companies.length > 0
+                    ? country.companies.map((c) => c.name).join(", ")
+                    : "No companies"}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add Country
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Country</DialogTitle>
+            <DialogDescription>
+              Create a new country in the CAPEX tree. Companies can be added
+              afterward from the CAPEX Tree page.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="country-name" required>
+                Country name
+              </Label>
+              <Input
+                id="country-name"
+                value={countryName}
+                onChange={(e) => setCountryName(e.target.value)}
+                placeholder="e.g. Kenya"
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAdd} disabled={!canSubmit}>
+              Add Country
             </Button>
           </DialogFooter>
         </DialogContent>
