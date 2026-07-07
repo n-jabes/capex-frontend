@@ -25,37 +25,41 @@ function TreeViewContent() {
   const { collapseAllToCountries } = useTreeExpansion();
   const [addDeliveryOpen, setAddDeliveryOpen] = useState(false);
 
-  const companies = useMemo(
+  const projectNames = useMemo(
     () =>
       tree.flatMap((country) =>
-        country.children.map((company) => ({
+        country.children.map((projectName) => ({
           countryName: country.name,
-          company,
+          projectName,
         })),
       ),
     [tree],
   );
 
-  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
+  const [activeProjectNameId, setActiveProjectNameId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
-    if (companies.length === 0) {
-      setActiveCompanyId(null);
+    if (projectNames.length === 0) {
+      setActiveProjectNameId(null);
       return;
     }
     if (
-      !activeCompanyId ||
-      !companies.some((entry) => entry.company.id === activeCompanyId)
+      !activeProjectNameId ||
+      !projectNames.some(
+        (entry) => entry.projectName.id === activeProjectNameId,
+      )
     ) {
-      setActiveCompanyId(companies[0].company.id);
+      setActiveProjectNameId(projectNames[0].projectName.id);
     }
-  }, [companies, activeCompanyId]);
+  }, [projectNames, activeProjectNameId]);
 
-  const activeCompanyEntry = companies.find(
-    (entry) => entry.company.id === activeCompanyId,
+  const activeProjectNameEntry = projectNames.find(
+    (entry) => entry.projectName.id === activeProjectNameId,
   );
 
-  const activeCompany = activeCompanyEntry?.company;
+  const activeProjectName = activeProjectNameEntry?.projectName;
 
   if (!isHydrated) {
     return (
@@ -66,13 +70,13 @@ function TreeViewContent() {
   }
 
   const handleAddDelivery = (child: CapexTreeNode) => {
-    if (!activeCompany) return;
-    addChild(activeCompany.id, child);
+    if (!activeProjectName) return;
+    addChild(activeProjectName.id, child);
     setSelectedNode({ id: child.id, type: child.type, name: child.name });
   };
 
-  const hasDeliveries = companies.some(
-    (entry) => entry.company.children.length > 0,
+  const hasDeliveries = projectNames.some(
+    (entry) => entry.projectName.children.length > 0,
   );
 
   return (
@@ -82,8 +86,8 @@ function TreeViewContent() {
           <h2 className="text-sm font-semibold">CAPEX Hierarchy</h2>
           <p className="text-xs text-muted-foreground">
             {tree.length} {tree.length === 1 ? "country" : "countries"}
-            {companies.length > 0 &&
-              ` · ${companies.length} ${companies.length === 1 ? "company" : "companies"}`}
+            {projectNames.length > 0 &&
+              ` · ${projectNames.length} ${projectNames.length === 1 ? "project name" : "project names"}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -97,22 +101,25 @@ function TreeViewContent() {
               Collapse to countries
             </Button>
           )}
-          {companies.length > 1 && (
+          {projectNames.length > 1 && (
             <Select
-              value={activeCompanyId ?? undefined}
-              onValueChange={(value) => setActiveCompanyId(value ?? null)}
+              value={activeProjectNameId ?? undefined}
+              onValueChange={(value) => setActiveProjectNameId(value ?? null)}
             >
               <SelectTrigger className="h-8 w-[180px] text-xs">
-                <SelectValue placeholder="Select company...">
-                  {activeCompanyEntry
-                    ? `${activeCompanyEntry.countryName} · ${activeCompanyEntry.company.name}`
+                <SelectValue placeholder="Select project name...">
+                  {activeProjectNameEntry
+                    ? `${activeProjectNameEntry.countryName} · ${activeProjectNameEntry.projectName.name}`
                     : null}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {companies.map((entry) => (
-                  <SelectItem key={entry.company.id} value={entry.company.id}>
-                    {entry.countryName} · {entry.company.name}
+                {projectNames.map((entry) => (
+                  <SelectItem
+                    key={entry.projectName.id}
+                    value={entry.projectName.id}
+                  >
+                    {entry.countryName} · {entry.projectName.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -122,7 +129,7 @@ function TreeViewContent() {
             size="sm"
             variant="outline"
             onClick={() => setAddDeliveryOpen(true)}
-            disabled={!activeCompany}
+            disabled={!activeProjectName}
           >
             <Plus className="mr-1 h-4 w-4" />
             Add Delivery
@@ -145,11 +152,11 @@ function TreeViewContent() {
             ))}
             <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
               <p className="text-sm text-muted-foreground">
-                {companies.length === 0
-                  ? "No companies yet. Use the menu on a country in the tree to add a company, then add deliveries."
+                {projectNames.length === 0
+                  ? "No project names yet. Use the menu on a country in the tree to add a project name, then add deliveries."
                   : "No deliveries yet. Add your first delivery to start building the CAPEX tree."}
               </p>
-              {activeCompany && (
+              {activeProjectName && (
                 <Button size="sm" onClick={() => setAddDeliveryOpen(true)}>
                   <Plus className="mr-1 h-4 w-4" />
                   Add Delivery
@@ -164,11 +171,11 @@ function TreeViewContent() {
         )}
       </ScrollArea>
 
-      {activeCompany && (
+      {activeProjectName && (
         <AddChildDialog
           open={addDeliveryOpen}
           onOpenChange={setAddDeliveryOpen}
-          parentNode={activeCompany}
+          parentNode={activeProjectName}
           onAdded={handleAddDelivery}
         />
       )}

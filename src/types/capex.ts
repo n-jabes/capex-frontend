@@ -1,6 +1,6 @@
 export type TreeNodeType =
   | "country"
-  | "company"
+  | "projectName"
   | "delivery"
   | "networkDomain"
   | "nodeName"
@@ -64,7 +64,7 @@ export interface FeatureDetailMetrics extends SummaryMetrics {
 }
 
 export interface AppSettings {
-  defaultCompanies: string[];
+  defaultProjectNames: string[];
   defaultDeliveries: string[];
   defaultNetworkDomains: string[];
   defaultNodeNames: string[];

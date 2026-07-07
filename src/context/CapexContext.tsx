@@ -8,7 +8,7 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { DEFAULT_COMPANIES } from "@/data/defaultCompanies";
+import { DEFAULT_PROJECT_NAMES } from "@/data/defaultProjectNames";
 import { DEFAULT_DELIVERIES } from "@/data/defaultDeliveries";
 import { DEFAULT_NETWORK_DOMAINS } from "@/data/defaultNetworkDomains";
 import { DEFAULT_NODE_NAMES } from "@/data/defaultNodeNames";
@@ -26,6 +26,8 @@ import {
   deleteNodeFromTree,
   findNode,
   generateId,
+  migrateAppSettings,
+  migrateTreeNodeTypes,
   updateNodeInTree,
 } from "@/lib/tree-utils";
 
@@ -33,7 +35,7 @@ const TREE_KEY = "capex-tree-data";
 const SETTINGS_KEY = "capex-app-settings";
 
 const defaultSettings: AppSettings = {
-  defaultCompanies: [...DEFAULT_COMPANIES],
+  defaultProjectNames: [...DEFAULT_PROJECT_NAMES],
   defaultDeliveries: [...DEFAULT_DELIVERIES],
   defaultNetworkDomains: [...DEFAULT_NETWORK_DOMAINS],
   defaultNodeNames: [...DEFAULT_NODE_NAMES],
@@ -85,12 +87,25 @@ export function CapexProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!settingsHydrated) return;
-    if (settings.defaultCompanies) return;
-    setSettings((prev) => ({
-      ...prev,
-      defaultCompanies: [...DEFAULT_COMPANIES],
-    }));
-  }, [settingsHydrated, settings.defaultCompanies, setSettings]);
+    const legacy = settings as AppSettings & { defaultCompanies?: string[] };
+    const needsMigration =
+      !legacy.defaultProjectNames || legacy.defaultCompanies !== undefined;
+    if (!needsMigration) return;
+    setSettings(migrateAppSettings(legacy, [...DEFAULT_PROJECT_NAMES]));
+  }, [settingsHydrated, settings, setSettings]);
+
+  useEffect(() => {
+    if (!treeHydrated) return;
+    const migrated = migrateTreeNodeTypes(tree);
+    const hasLegacyCompany = JSON.stringify(tree).includes('"type":"company"');
+    if (!hasLegacyCompany) return;
+    setTree(migrated);
+    setSelectedNode((prev) =>
+      prev && (prev.type as string) === "company"
+        ? { ...prev, type: "projectName" }
+        : prev,
+    );
+  }, [treeHydrated, tree, setTree, setSelectedNode]);
 
   const addChild = useCallback(
     (parentId: string, child: CapexTreeNode) => {

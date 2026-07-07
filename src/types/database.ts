@@ -11,8 +11,8 @@ export interface Country {
   updatedAt: string;
 }
 
-/** @table companies */
-export interface Company {
+/** @table project_names */
+export interface ProjectName {
   id: string;
   countryId: string;
   name: string;
@@ -23,7 +23,7 @@ export interface Company {
 /** @table deliveries */
 export interface Delivery {
   id: string;
-  companyId: string;
+  projectNameId: string;
   name: string;
   createdAt: string;
   updatedAt: string;

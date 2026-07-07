@@ -43,7 +43,7 @@ import {
 
 const typeIcons: Record<CapexTreeNode["type"], string> = {
   country: "🌍",
-  company: "🏢",
+  projectName: "🏢",
   delivery: "📦",
   networkDomain: "🔗",
   nodeName: "🖥️",
@@ -71,7 +71,7 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
   const isSelected = selectedNode?.id === node.id;
   const canAddChild = getChildTypeForParent(node.type) !== null;
   const canRename = !["nodeNameDB", "feature"].includes(node.type);
-  const canDelete = !["country", "company"].includes(node.type);
+  const canDelete = !["country", "projectName"].includes(node.type);
   const hasChildren = node.children.length > 0;
 
   const handleSelect = () => {

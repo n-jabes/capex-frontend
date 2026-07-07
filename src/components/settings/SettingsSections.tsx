@@ -366,7 +366,7 @@ export function CountriesSection({
   countries: Array<{
     id: string;
     name: string;
-    companies: Array<{ id: string; name: string }>;
+    projectNames: Array<{ id: string; name: string }>;
   }>;
   onAddCountry: (countryName: string) => void;
 }) {
@@ -393,7 +393,7 @@ export function CountriesSection({
         <CardHeader>
           <CardTitle className="text-base">Countries</CardTitle>
           <CardDescription>
-            Manage telecom markets in the CAPEX tree. Add companies under each
+            Manage telecom markets in the CAPEX tree. Add project names under each
             country from the CAPEX Tree page using preset or custom names.
           </CardDescription>
         </CardHeader>
@@ -406,9 +406,9 @@ export function CountriesSection({
               >
                 <p className="font-medium">{country.name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {country.companies.length > 0
-                    ? country.companies.map((c) => c.name).join(", ")
-                    : "No companies"}
+                  {country.projectNames.length > 0
+                    ? country.projectNames.map((p) => p.name).join(", ")
+                    : "No project names"}
                 </p>
               </li>
             ))}
@@ -425,7 +425,7 @@ export function CountriesSection({
           <DialogHeader>
             <DialogTitle>Add Country</DialogTitle>
             <DialogDescription>
-              Create a new country in the CAPEX tree. Companies can be added
+              Create a new country in the CAPEX tree. Project names can be added
               afterward from the CAPEX Tree page.
             </DialogDescription>
           </DialogHeader>

@@ -1,4 +1,5 @@
 import type {
+  AppSettings,
   CapexTreeNode,
   FeatureCatalogItem,
   SelectedNode,
@@ -18,8 +19,8 @@ export function createInitialTree(): CapexTreeNode[] {
       name: "Rwanda",
       children: [
         {
-          id: "company-yas",
-          type: "company",
+          id: "project-yas",
+          type: "projectName",
           name: "YAS CAPEX",
           children: [],
         },
@@ -144,8 +145,8 @@ export function getChildTypeForParent(
   parentType: CapexTreeNode["type"],
 ): CapexTreeNode["type"] | null {
   const map: Record<CapexTreeNode["type"], CapexTreeNode["type"] | null> = {
-    country: "company",
-    company: "delivery",
+    country: "projectName",
+    projectName: "delivery",
     delivery: "networkDomain",
     networkDomain: "nodeName",
     nodeName: "nodeNameDB",
@@ -158,7 +159,7 @@ export function getChildTypeForParent(
 export function nodeTypeLabel(type: CapexTreeNode["type"]): string {
   const labels: Record<CapexTreeNode["type"], string> = {
     country: "Country",
-    company: "Company",
+    projectName: "Project Name",
     delivery: "Delivery",
     networkDomain: "Network Domain",
     nodeName: "Node Name",
@@ -231,7 +232,7 @@ export function collapseToChildTypeLabel(
   if (!childType) return null;
 
   const pluralLabels: Partial<Record<CapexTreeNode["type"], string>> = {
-    company: "companies",
+    projectName: "project names",
     delivery: "deliveries",
     networkDomain: "network domains",
     nodeName: "node names",
@@ -240,4 +241,28 @@ export function collapseToChildTypeLabel(
   };
 
   return `Collapse to ${pluralLabels[childType] ?? `${nodeTypeLabel(childType).toLowerCase()}s`}`;
+}
+
+/** Migrate legacy `company` nodes from older saved trees. */
+export function migrateTreeNodeTypes(nodes: CapexTreeNode[]): CapexTreeNode[] {
+  return nodes.map((node) => ({
+    ...node,
+    type: (node.type as string) === "company" ? "projectName" : node.type,
+    children: migrateTreeNodeTypes(node.children),
+  }));
+}
+
+type LegacyAppSettings = AppSettings & { defaultCompanies?: string[] };
+
+/** Migrate legacy settings that used `defaultCompanies`. */
+export function migrateAppSettings(
+  settings: LegacyAppSettings,
+  fallbackProjectNames: string[],
+): AppSettings {
+  const { defaultCompanies, ...rest } = settings;
+  return {
+    ...rest,
+    defaultProjectNames:
+      settings.defaultProjectNames ?? defaultCompanies ?? fallbackProjectNames,
+  };
 }

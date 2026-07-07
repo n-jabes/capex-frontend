@@ -46,8 +46,8 @@ export function AddChildDialog({
 
   const presets = (() => {
     switch (childType) {
-      case "company":
-        return settings.defaultCompanies ?? [];
+      case "projectName":
+        return settings.defaultProjectNames ?? [];
       case "delivery":
         return settings.defaultDeliveries;
       case "networkDomain":

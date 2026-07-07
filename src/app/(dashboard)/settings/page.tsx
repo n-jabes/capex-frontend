@@ -46,33 +46,33 @@ export default function SettingsPage() {
         countries={tree.map((country) => ({
           id: country.id,
           name: country.name,
-          companies: country.children.map((company) => ({
-            id: company.id,
-            name: company.name,
+          projectNames: country.children.map((projectName) => ({
+            id: projectName.id,
+            name: projectName.name,
           })),
         }))}
         onAddCountry={addCountry}
       />
 
       <StringListSection
-        title="Default Companies"
-        description="Configure reusable company names shared across countries. Users can select these when adding a company under a country in the CAPEX tree."
-        items={settings.defaultCompanies ?? []}
+        title="Default Project Names"
+        description="Configure reusable project names shared across countries. Users can select these when adding a project name under a country in the CAPEX tree."
+        items={settings.defaultProjectNames ?? []}
         onAdd={(value) =>
           updateSettings((s) => ({
             ...s,
-            defaultCompanies: [...(s.defaultCompanies ?? []), value],
+            defaultProjectNames: [...(s.defaultProjectNames ?? []), value],
           }))
         }
         onRemove={(index) =>
           updateSettings((s) => ({
             ...s,
-            defaultCompanies: (s.defaultCompanies ?? []).filter(
+            defaultProjectNames: (s.defaultProjectNames ?? []).filter(
               (_, i) => i !== index,
             ),
           }))
         }
-        addLabel="Add Default Company"
+        addLabel="Add Default Project Name"
         placeholder="e.g. YAS CAPEX"
       />
 
