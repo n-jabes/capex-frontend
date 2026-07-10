@@ -8,46 +8,30 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { DEFAULT_PROJECT_NAMES } from "@/data/defaultProjectNames";
-import { DEFAULT_DELIVERIES } from "@/data/defaultDeliveries";
-import { DEFAULT_NETWORK_DOMAINS } from "@/data/defaultNetworkDomains";
-import { DEFAULT_NODE_NAMES } from "@/data/defaultNodeNames";
-import { FEATURES } from "@/data/features";
+import { DEFAULT_APP_SETTINGS } from "@/data/seedCatalogs";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import type {
-  AppSettings,
-  CapexTreeNode,
-  FeaturePurchaseData,
-  SelectedNode,
-} from "@/types/capex";
+import {
+  normalizeAppSettings,
+  settingsNeedCatalogMigration,
+} from "@/lib/catalog-utils";
+import {
+  relationshipsAreEmpty,
+  withDefaultRelationshipsIfEmpty,
+} from "@/lib/relationship-utils";
+import type { AppSettings, CapexTreeNode, PackagePurchaseData, SelectedNode } from "@/types/capex";
 import {
   addChildToNode,
   createInitialTree,
   deleteNodeFromTree,
-  findNode,
   generateId,
-  migrateAppSettings,
-  migrateTreeNodeTypes,
+  migrateSelectedNodeType,
+  migrateTreeHierarchy,
+  treeNeedsHierarchyMigration,
   updateNodeInTree,
 } from "@/lib/tree-utils";
 
 const TREE_KEY = "capex-tree-data";
 const SETTINGS_KEY = "capex-app-settings";
-
-const defaultSettings: AppSettings = {
-  defaultProjectNames: [...DEFAULT_PROJECT_NAMES],
-  defaultDeliveries: [...DEFAULT_DELIVERIES],
-  defaultNetworkDomains: [...DEFAULT_NETWORK_DOMAINS],
-  defaultNodeNames: [...DEFAULT_NODE_NAMES],
-  nodeNameDBMapping: {
-    MME: ["sgsn-mme"],
-    UDM: ["udm"],
-    PCRF: ["pcrf"],
-    PGW: ["pgw"],
-    SGSN: ["sgsn-mme"],
-  },
-  features: FEATURES,
-};
 
 interface CapexContextValue {
   tree: CapexTreeNode[];
@@ -58,13 +42,10 @@ interface CapexContextValue {
   addChild: (parentId: string, child: CapexTreeNode) => void;
   renameNode: (id: string, name: string) => void;
   deleteNode: (id: string) => void;
-  addFeaturePurchases: (
-    nodeNameDBId: string,
-    parentTreeNodeId: string,
-    purchases: Array<{ featureId: string; purchase: FeaturePurchaseData }>,
-  ) => void;
   updateSettings: (updater: (prev: AppSettings) => AppSettings) => void;
   addCountry: (countryName: string) => void;
+  updatePackageData: (nodeId: string, data: PackagePurchaseData) => void;
+  addChildren: (parentId: string, children: CapexTreeNode[]) => void;
 }
 
 const CapexContext = createContext<CapexContextValue | null>(null);
@@ -76,7 +57,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   );
   const [settings, setSettings, settingsHydrated] = useLocalStorage<AppSettings>(
     SETTINGS_KEY,
-    defaultSettings,
+    DEFAULT_APP_SETTINGS,
   );
   const [selectedNode, setSelectedNode] = useLocalStorage<SelectedNode | null>(
     "capex-selected-node",
@@ -87,24 +68,28 @@ export function CapexProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!settingsHydrated) return;
-    const legacy = settings as AppSettings & { defaultCompanies?: string[] };
-    const needsMigration =
-      !legacy.defaultProjectNames || legacy.defaultCompanies !== undefined;
-    if (!needsMigration) return;
-    setSettings(migrateAppSettings(legacy, [...DEFAULT_PROJECT_NAMES]));
+    if (!settingsNeedCatalogMigration(settings)) return;
+    setSettings(normalizeAppSettings(settings));
   }, [settingsHydrated, settings, setSettings]);
 
   useEffect(() => {
+    if (!settingsHydrated) return;
+    if (!relationshipsAreEmpty(settings.relationships)) return;
+    setSettings((prev) => ({
+      ...prev,
+      relationships: withDefaultRelationshipsIfEmpty(prev.relationships),
+    }));
+  }, [settingsHydrated, settings.relationships, setSettings]);
+
+  useEffect(() => {
     if (!treeHydrated) return;
-    const migrated = migrateTreeNodeTypes(tree);
-    const hasLegacyCompany = JSON.stringify(tree).includes('"type":"company"');
-    if (!hasLegacyCompany) return;
-    setTree(migrated);
-    setSelectedNode((prev) =>
-      prev && (prev.type as string) === "company"
-        ? { ...prev, type: "projectName" }
-        : prev,
-    );
+    if (!treeNeedsHierarchyMigration(tree)) return;
+    setTree(migrateTreeHierarchy(tree));
+    setSelectedNode((prev) => {
+      if (!prev) return prev;
+      const migratedType = migrateSelectedNodeType(prev.type as string);
+      return migratedType ? { ...prev, type: migratedType } : null;
+    });
   }, [treeHydrated, tree, setTree, setSelectedNode]);
 
   const addChild = useCallback(
@@ -132,49 +117,6 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     [setTree, setSelectedNode],
   );
 
-  const addFeaturePurchases = useCallback(
-    (
-      nodeNameDBTreeNodeId: string,
-      _parentTreeNodeId: string,
-      purchases: Array<{ featureId: string; purchase: FeaturePurchaseData }>,
-    ) => {
-      setTree((prev) => {
-        const dbNode = findNode(prev, nodeNameDBTreeNodeId);
-        if (!dbNode) return prev;
-
-        const existingFeatureIds = new Set(
-          dbNode.children.filter((c) => c.featureId).map((c) => c.featureId),
-        );
-
-        let updated = prev;
-        for (const { featureId, purchase } of purchases) {
-          const catalogFeature = settings.features.find((f) => f.id === featureId);
-          if (!catalogFeature) continue;
-
-          const existing = dbNode.children.find((c) => c.featureId === featureId);
-          if (existing) {
-            updated = updateNodeInTree(updated, existing.id, (node) => ({
-              ...node,
-              purchase,
-            }));
-          } else if (!existingFeatureIds.has(featureId)) {
-            updated = addChildToNode(updated, nodeNameDBTreeNodeId, {
-              id: generateId(),
-              type: "feature",
-              name: catalogFeature.name,
-              featureId,
-              purchase,
-              children: [],
-            });
-            existingFeatureIds.add(featureId);
-          }
-        }
-        return updated;
-      });
-    },
-    [setTree, settings.features],
-  );
-
   const updateSettings = useCallback(
     (updater: (prev: AppSettings) => AppSettings) => {
       setSettings(updater);
@@ -195,6 +137,29 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     [setTree],
   );
 
+  const updatePackageData = useCallback(
+    (nodeId: string, data: PackagePurchaseData) => {
+      setTree((prev) =>
+        updateNodeInTree(prev, nodeId, (node) => ({ ...node, packageData: data })),
+      );
+    },
+    [setTree],
+  );
+
+  const addChildren = useCallback(
+    (parentId: string, children: CapexTreeNode[]) => {
+      if (children.length === 0) return;
+      setTree((prev) => {
+        let next = prev;
+        for (const child of children) {
+          next = addChildToNode(next, parentId, child);
+        }
+        return next;
+      });
+    },
+    [setTree],
+  );
+
   const value = useMemo(
     () => ({
       tree,
@@ -205,9 +170,10 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       addChild,
       renameNode,
       deleteNode,
-      addFeaturePurchases,
       updateSettings,
       addCountry,
+      updatePackageData,
+      addChildren,
     }),
     [
       tree,
@@ -218,9 +184,10 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       addChild,
       renameNode,
       deleteNode,
-      addFeaturePurchases,
       updateSettings,
       addCountry,
+      updatePackageData,
+      addChildren,
     ],
   );
 

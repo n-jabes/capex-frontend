@@ -2,16 +2,20 @@ export type TreeNodeType =
   | "country"
   | "projectName"
   | "delivery"
-  | "networkDomain"
-  | "nodeName"
-  | "nodeNameDB"
-  | "feature";
+  | "domain"
+  | "node"
+  | "vendor"
+  | "vendorNodeName"
+  | "package";
 
-export interface FeaturePurchaseData {
-  currentLicenseQty: number;
-  newLicenseQty: number;
-  trafficQty: number;
-  vendor: string;
+/** CAPEX quantity data for a package leaf — full form in Phase 4. */
+export interface PackagePurchaseData {
+  licensePackage: string;
+  unit: string;
+  expansionQty: number;
+  existingQty: number;
+  currentTraffic: number;
+  unitPrice: number;
 }
 
 export interface CapexTreeNode {
@@ -19,11 +23,10 @@ export interface CapexTreeNode {
   type: TreeNodeType;
   name: string;
   children: CapexTreeNode[];
-  /** Reference to catalog Node Name DB */
-  nodeNameDBId?: string;
-  /** Reference to catalog feature */
-  featureId?: string;
-  purchase?: FeaturePurchaseData;
+  /** Reference to a catalog entry when created from a preset */
+  catalogId?: string;
+  /** Populated when package CAPEX is entered (Phase 4) */
+  packageData?: PackagePurchaseData;
 }
 
 export interface SelectedNode {
@@ -32,42 +35,65 @@ export interface SelectedNode {
   name: string;
 }
 
-export interface FeatureCatalogItem {
-  id: string;
-  name: string;
-  unit: string;
-  unitPrice: number;
-  nodeNameDBId: string;
-}
-
-export interface NodeNameDBCatalogItem {
-  id: string;
-  name: string;
-  description?: string;
-}
-
 export interface SummaryMetrics {
   totalCost: number;
-  buyingQuantity: number;
+  expansionQuantity: number;
   avgCurrentUtilization: number;
   avgPostExpansionUtilization: number;
-  featureCount: number;
+  packageCount: number;
+  packagesWithData: number;
 }
 
-export interface FeatureDetailMetrics extends SummaryMetrics {
-  unitPrice: number;
-  vendor: string;
+/** Simple name-based catalog entry (project names, deliveries, domains, nodes, vendors). */
+export interface CatalogItem {
+  id: string;
+  name: string;
+}
+
+/** Vendor-specific node name tied to a standard node and vendor. */
+export interface VendorNodeNameCatalogItem {
+  id: string;
+  nodeId: string;
+  vendorId: string;
+  name: string;
+}
+
+/** Package catalog entry with default pricing metadata for Phase 4. */
+export interface PackageCatalogItem {
+  id: string;
+  /** One package definition can apply to many vendor node names. */
+  vendorNodeNameIds: string[];
+  name: string;
+  licensePackage: string;
   unit: string;
-  currentLicenseQty: number;
-  newLicenseQty: number;
-  trafficQty: number;
+  unitPrice: number;
+}
+
+/** Many-to-many relationship maps — configured in Phase 3. */
+export interface CatalogRelationships {
+  deliveryDomains: Record<string, string[]>;
+  domainNodes: Record<string, string[]>;
+  countryVendors: Record<string, string[]>;
+}
+
+export interface AppCatalogs {
+  projectNames: CatalogItem[];
+  deliveries: CatalogItem[];
+  domains: CatalogItem[];
+  nodes: CatalogItem[];
+  vendors: CatalogItem[];
+  vendorNodeNames: VendorNodeNameCatalogItem[];
+  packages: PackageCatalogItem[];
 }
 
 export interface AppSettings {
-  defaultProjectNames: string[];
-  defaultDeliveries: string[];
-  defaultNetworkDomains: string[];
-  defaultNodeNames: string[];
-  nodeNameDBMapping: Record<string, string[]>;
-  features: FeatureCatalogItem[];
+  catalogs: AppCatalogs;
+  relationships: CatalogRelationships;
 }
+
+export type SimpleCatalogKey =
+  | "projectNames"
+  | "deliveries"
+  | "domains"
+  | "nodes"
+  | "vendors";

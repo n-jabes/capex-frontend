@@ -1,11 +1,10 @@
 import type {
-  AppSettings,
   CapexTreeNode,
-  FeatureCatalogItem,
+  PackagePurchaseData,
   SelectedNode,
   SummaryMetrics,
 } from "@/types/capex";
-import { computePurchaseMetrics } from "@/lib/calculations";
+import { computePackageMetrics } from "@/lib/calculations";
 
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -89,56 +88,69 @@ export function addChildToNode(
   }));
 }
 
-export function collectFeatureNodes(node: CapexTreeNode): CapexTreeNode[] {
-  const features: CapexTreeNode[] = [];
-  if (node.type === "feature" && node.purchase && node.featureId) {
-    features.push(node);
+export function collectPackageNodes(node: CapexTreeNode): CapexTreeNode[] {
+  const packages: CapexTreeNode[] = [];
+  if (node.type === "package") {
+    packages.push(node);
   }
   for (const child of node.children) {
-    features.push(...collectFeatureNodes(child));
+    packages.push(...collectPackageNodes(child));
   }
-  return features;
+  return packages;
 }
 
-export function computeSummaryForNode(
-  node: CapexTreeNode,
-  features: FeatureCatalogItem[],
-): SummaryMetrics {
-  const featureNodes = collectFeatureNodes(node);
+export function computeSummaryForNode(node: CapexTreeNode): SummaryMetrics {
+  const packageNodes = collectPackageNodes(node);
+  const withData = packageNodes.filter((p) => p.packageData);
 
-  if (featureNodes.length === 0) {
+  if (withData.length === 0) {
     return {
       totalCost: 0,
-      buyingQuantity: 0,
+      expansionQuantity: 0,
       avgCurrentUtilization: 0,
       avgPostExpansionUtilization: 0,
-      featureCount: 0,
+      packageCount: packageNodes.length,
+      packagesWithData: 0,
     };
   }
 
   let totalCost = 0;
-  let buyingQuantity = 0;
+  let expansionQuantity = 0;
   let currentUtilSum = 0;
   let postExpSum = 0;
 
-  for (const fn of featureNodes) {
-    const catalogFeature = features.find((f) => f.id === fn.featureId);
-    if (!catalogFeature || !fn.purchase) continue;
-
-    const metrics = computePurchaseMetrics(fn.purchase, catalogFeature.unitPrice);
+  for (const pkg of withData) {
+    const metrics = computePackageMetrics(pkg.packageData!);
     totalCost += metrics.totalPrice;
-    buyingQuantity += metrics.buyingQuantity;
-    currentUtilSum += metrics.currentLicensePercent;
-    postExpSum += metrics.afterExpansionPercent;
+    expansionQuantity += metrics.expansionQty;
+    currentUtilSum += metrics.currentUtilization;
+    postExpSum += metrics.expansionUtilization;
   }
 
   return {
     totalCost,
-    buyingQuantity,
-    avgCurrentUtilization: currentUtilSum / featureNodes.length,
-    avgPostExpansionUtilization: postExpSum / featureNodes.length,
-    featureCount: featureNodes.length,
+    expansionQuantity,
+    avgCurrentUtilization: currentUtilSum / withData.length,
+    avgPostExpansionUtilization: postExpSum / withData.length,
+    packageCount: packageNodes.length,
+    packagesWithData: withData.length,
   };
+}
+
+export interface ChildRollupRow {
+  id: string;
+  name: string;
+  type: CapexTreeNode["type"];
+  metrics: SummaryMetrics;
+}
+
+export function computeChildRollups(node: CapexTreeNode): ChildRollupRow[] {
+  return node.children.map((child) => ({
+    id: child.id,
+    name: child.name,
+    type: child.type,
+    metrics: computeSummaryForNode(child),
+  }));
 }
 
 export function getChildTypeForParent(
@@ -147,11 +159,12 @@ export function getChildTypeForParent(
   const map: Record<CapexTreeNode["type"], CapexTreeNode["type"] | null> = {
     country: "projectName",
     projectName: "delivery",
-    delivery: "networkDomain",
-    networkDomain: "nodeName",
-    nodeName: "nodeNameDB",
-    nodeNameDB: "feature",
-    feature: null,
+    delivery: "domain",
+    domain: "node",
+    node: "vendor",
+    vendor: "vendorNodeName",
+    vendorNodeName: "package",
+    package: null,
   };
   return map[parentType];
 }
@@ -161,10 +174,11 @@ export function nodeTypeLabel(type: CapexTreeNode["type"]): string {
     country: "Country",
     projectName: "Project Name",
     delivery: "Delivery",
-    networkDomain: "Network Domain",
-    nodeName: "Node Name",
-    nodeNameDB: "Node Name DB",
-    feature: "Feature",
+    domain: "Domain",
+    node: "Node",
+    vendor: "Vendor",
+    vendorNodeName: "Vendor Node Name",
+    package: "Package",
   };
   return labels[type];
 }
@@ -234,35 +248,114 @@ export function collapseToChildTypeLabel(
   const pluralLabels: Partial<Record<CapexTreeNode["type"], string>> = {
     projectName: "project names",
     delivery: "deliveries",
-    networkDomain: "network domains",
-    nodeName: "node names",
-    nodeNameDB: "node name DBs",
-    feature: "features",
+    domain: "domains",
+    node: "nodes",
+    vendor: "vendors",
+    vendorNodeName: "vendor node names",
+    package: "packages",
   };
 
   return `Collapse to ${pluralLabels[childType] ?? `${nodeTypeLabel(childType).toLowerCase()}s`}`;
 }
 
-/** Migrate legacy `company` nodes from older saved trees. */
-export function migrateTreeNodeTypes(nodes: CapexTreeNode[]): CapexTreeNode[] {
-  return nodes.map((node) => ({
-    ...node,
-    type: (node.type as string) === "company" ? "projectName" : node.type,
-    children: migrateTreeNodeTypes(node.children),
-  }));
+const LEGACY_TREE_TYPES = new Set([
+  "company",
+  "networkDomain",
+  "nodeName",
+  "nodeNameDB",
+  "feature",
+]);
+
+const LEGACY_TYPE_MAP: Record<string, CapexTreeNode["type"]> = {
+  company: "projectName",
+  networkDomain: "domain",
+  nodeName: "node",
+  nodeNameDB: "vendorNodeName",
+  feature: "package",
+};
+
+function mapLegacyNodeType(type: string): CapexTreeNode["type"] {
+  return LEGACY_TYPE_MAP[type] ?? (type as CapexTreeNode["type"]);
 }
 
-type LegacyAppSettings = AppSettings & { defaultCompanies?: string[] };
-
-/** Migrate legacy settings that used `defaultCompanies`. */
-export function migrateAppSettings(
-  settings: LegacyAppSettings,
-  fallbackProjectNames: string[],
-): AppSettings {
-  const { defaultCompanies, ...rest } = settings;
-  return {
-    ...rest,
-    defaultProjectNames:
-      settings.defaultProjectNames ?? defaultCompanies ?? fallbackProjectNames,
+type LegacyTreeNode = CapexTreeNode & {
+  nodeNameDBId?: string;
+  featureId?: string;
+  purchase?: {
+    currentLicenseQty: number;
+    newLicenseQty: number;
+    trafficQty: number;
+    vendor: string;
   };
+};
+
+function sanitizeTreeNode(node: LegacyTreeNode): CapexTreeNode {
+  const type = mapLegacyNodeType(node.type as string);
+  let children = (node.children ?? []).map(sanitizeTreeNode);
+
+  if (type === "node") {
+    children = children.flatMap((child) => {
+      if (child.type === "vendorNodeName") {
+        return [
+          {
+            id: generateId(),
+            type: "vendor" as const,
+            name: "Ericsson",
+            children: [child],
+          },
+        ];
+      }
+      return [child];
+    });
+  }
+
+  const migrated: CapexTreeNode = {
+    id: node.id,
+    type,
+    name: node.name,
+    children,
+  };
+
+  if (type === "package" && node.purchase) {
+    const usedQty = Math.max(
+      0,
+      node.purchase.currentLicenseQty - node.purchase.trafficQty,
+    );
+    migrated.packageData = {
+      licensePackage: node.name,
+      unit: "",
+      expansionQty: Math.max(
+        0,
+        node.purchase.newLicenseQty - node.purchase.currentLicenseQty,
+      ),
+      existingQty: node.purchase.currentLicenseQty,
+      currentTraffic: usedQty,
+      unitPrice: 0,
+    };
+  } else if (node.packageData) {
+    migrated.packageData = node.packageData;
+  }
+
+  if (node.catalogId) migrated.catalogId = node.catalogId;
+
+  return migrated;
+}
+
+export function treeNeedsHierarchyMigration(nodes: CapexTreeNode[]): boolean {
+  let needs = false;
+  walkTreeNodes(nodes, (node) => {
+    if (LEGACY_TREE_TYPES.has(node.type as string)) needs = true;
+  });
+  return needs;
+}
+
+export function migrateTreeHierarchy(nodes: CapexTreeNode[]): CapexTreeNode[] {
+  return nodes.map((node) => sanitizeTreeNode(node as LegacyTreeNode));
+}
+
+export function migrateSelectedNodeType(
+  type: string,
+): CapexTreeNode["type"] | null {
+  if (LEGACY_TREE_TYPES.has(type)) return mapLegacyNodeType(type);
+  return type as CapexTreeNode["type"];
 }

@@ -29,53 +29,72 @@ export interface Delivery {
   updatedAt: string;
 }
 
-/** @table network_domains */
-export interface NetworkDomain {
+/** @table domains */
+export interface Domain {
   id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** @table delivery_domains — many-to-many */
+export interface DeliveryDomain {
   deliveryId: string;
+  domainId: string;
+}
+
+/** @table nodes — standard telecom nodes */
+export interface Node {
+  id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
 }
 
-/** @table node_names */
-export interface NodeName {
+/** @table domain_nodes — many-to-many */
+export interface DomainNode {
+  domainId: string;
+  nodeId: string;
+}
+
+/** @table vendors */
+export interface Vendor {
   id: string;
-  networkDomainId: string;
   name: string;
   createdAt: string;
   updatedAt: string;
 }
 
-/** @table node_name_dbs — global catalog, constant across countries */
-export interface NodeNameDB {
+/** @table vendor_node_names */
+export interface VendorNodeName {
   id: string;
+  nodeId: string;
+  vendorId: string;
   name: string;
-  description?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-/** @table features — fixed unit prices managed by administrators */
-export interface Feature {
+/** @table packages */
+export interface Package {
   id: string;
-  nodeNameDBId: string;
+  vendorNodeNameIds: string[];
   name: string;
+  licensePackage: string;
   unit: string;
   unitPrice: number;
   createdAt: string;
   updatedAt: string;
 }
 
-/** @table feature_purchases — user-entered CAPEX entries */
-export interface FeaturePurchase {
+/** @table package_purchases — user-entered CAPEX entries */
+export interface PackagePurchase {
   id: string;
-  nodeNameDBInstanceId: string;
-  featureId: string;
-  currentLicenseQty: number;
-  newLicenseQty: number;
-  trafficQty: number;
-  vendor: string;
+  packageInstanceId: string;
+  expansionQty: number;
+  existingQty: number;
+  currentTraffic: number;
+  unitPrice: number;
   createdAt: string;
   updatedAt: string;
 }

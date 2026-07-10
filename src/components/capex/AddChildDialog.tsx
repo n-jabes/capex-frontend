@@ -19,11 +19,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { NODE_NAME_DBS } from "@/data/nodeNameDBs";
-import { SearchablePicker } from "@/components/capex/SearchablePicker";
 import { useCapex, generateId } from "@/context/CapexContext";
+import { getFilteredPresetsForChild } from "@/lib/relationship-utils";
 import type { CapexTreeNode } from "@/types/capex";
-import { getChildTypeForParent, nodeTypeLabel } from "@/lib/tree-utils";
+import { findNodePath, getChildTypeForParent, nodeTypeLabel } from "@/lib/tree-utils";
 
 interface AddChildDialogProps {
   open: boolean;
@@ -38,31 +37,21 @@ export function AddChildDialog({
   parentNode,
   onAdded,
 }: AddChildDialogProps) {
-  const { settings } = useCapex();
+  const { settings, tree } = useCapex();
   const childType = getChildTypeForParent(parentNode.type);
   const [customName, setCustomName] = useState("");
-  const [selectedPreset, setSelectedPreset] = useState("");
-  const [selectedNodeNameDB, setSelectedNodeNameDB] = useState("");
+  const [selectedPresetId, setSelectedPresetId] = useState("");
 
-  const presets = (() => {
-    switch (childType) {
-      case "projectName":
-        return settings.defaultProjectNames ?? [];
-      case "delivery":
-        return settings.defaultDeliveries;
-      case "networkDomain":
-        return settings.defaultNetworkDomains;
-      case "nodeName":
-        return settings.defaultNodeNames;
-      default:
-        return [];
-    }
-  })();
+  const parentPath = findNodePath(tree, parentNode.id) ?? [parentNode];
+  const presets =
+    childType
+      ? getFilteredPresetsForChild(settings, parentNode, parentPath, childType)
+      : [];
+  const selectedPreset = presets.find((item) => item.id === selectedPresetId);
 
   const reset = () => {
     setCustomName("");
-    setSelectedPreset("");
-    setSelectedNodeNameDB("");
+    setSelectedPresetId("");
   };
 
   const handleClose = (isOpen: boolean) => {
@@ -73,22 +62,7 @@ export function AddChildDialog({
   const handleAdd = () => {
     if (!childType) return;
 
-    if (childType === "nodeNameDB") {
-      const db = NODE_NAME_DBS.find((d) => d.id === selectedNodeNameDB);
-      if (!db) return;
-      const child: CapexTreeNode = {
-        id: generateId(),
-        type: "nodeNameDB",
-        name: db.name,
-        nodeNameDBId: db.id,
-        children: [],
-      };
-      onAdded(child);
-      handleClose(false);
-      return;
-    }
-
-    const name = customName.trim() || selectedPreset;
+    const name = customName.trim() || selectedPreset?.name;
     if (!name) return;
 
     const child: CapexTreeNode = {
@@ -96,6 +70,9 @@ export function AddChildDialog({
       type: childType,
       name,
       children: [],
+      ...(selectedPresetId && !customName.trim()
+        ? { catalogId: selectedPresetId }
+        : {}),
     };
     onAdded(child);
     handleClose(false);
@@ -110,59 +87,46 @@ export function AddChildDialog({
           <DialogTitle>Add {label}</DialogTitle>
         </DialogHeader>
 
-        {childType === "nodeNameDB" ? (
-          <div className="space-y-2 py-2">
-            <Label required>Select Node Name DB</Label>
-            <p className="text-xs text-muted-foreground">
-              Node Name DBs are predefined catalog entries shared across all countries.
-              Type to filter the list.
-            </p>
-            <SearchablePicker
-              items={NODE_NAME_DBS.map((db) => ({
-                id: db.id,
-                label: db.name,
-                description: db.description,
-              }))}
-              selectedId={selectedNodeNameDB}
-              onSelect={setSelectedNodeNameDB}
-              placeholder="Search node name DBs..."
-              emptyMessage="No node name DBs match your search."
-            />
-          </div>
-        ) : (
-          <Tabs defaultValue="preset" className="py-2">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="preset">Select preset</TabsTrigger>
-              <TabsTrigger value="custom">Custom name</TabsTrigger>
-            </TabsList>
-            <TabsContent value="preset" className="space-y-2 pt-2">
-              <Label required>Preset {label}</Label>
-              <Select
-                value={selectedPreset}
-                onValueChange={(v) => setSelectedPreset(v ?? "")}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={`Choose ${label.toLowerCase()}...`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {presets.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
+        <Tabs defaultValue="preset" className="py-2">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="preset">Select preset</TabsTrigger>
+            <TabsTrigger value="custom">Custom name</TabsTrigger>
+          </TabsList>
+          <TabsContent value="preset" className="space-y-2 pt-2">
+            <Label required>Preset {label}</Label>
+            <Select
+              value={selectedPresetId}
+              onValueChange={(value) => setSelectedPresetId(value ?? "")}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={`Choose ${label.toLowerCase()}...`}>
+                  {selectedPreset?.name ?? ""}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {presets.length === 0 ? (
+                  <SelectItem value="__none" disabled>
+                    No mapped presets — configure in Settings → Mappings
+                  </SelectItem>
+                ) : (
+                  presets.map((preset) => (
+                    <SelectItem key={preset.id} value={preset.id}>
+                      {preset.name}
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </TabsContent>
-            <TabsContent value="custom" className="space-y-2 pt-2">
-              <Label required>Custom {label} name</Label>
-              <Input
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder={`Enter ${label.toLowerCase()} name`}
-              />
-            </TabsContent>
-          </Tabs>
-        )}
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </TabsContent>
+          <TabsContent value="custom" className="space-y-2 pt-2">
+            <Label required>Custom {label} name</Label>
+            <Input
+              value={customName}
+              onChange={(event) => setCustomName(event.target.value)}
+              placeholder={`Enter ${label.toLowerCase()} name`}
+            />
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => handleClose(false)}>
@@ -170,11 +134,7 @@ export function AddChildDialog({
           </Button>
           <Button
             onClick={handleAdd}
-            disabled={
-              childType === "nodeNameDB"
-                ? !selectedNodeNameDB
-                : !customName.trim() && !selectedPreset
-            }
+            disabled={!customName.trim() && !selectedPresetId}
           >
             Add {label}
           </Button>

@@ -14,6 +14,7 @@ import {
 import { useCapex } from "@/context/CapexContext";
 import { TreeNodeItem } from "@/components/capex/TreeNodeItem";
 import { AddChildDialog } from "@/components/capex/AddChildDialog";
+import { CapexEntryWizard } from "@/components/capex/CapexEntryWizard";
 import {
   TreeExpansionProvider,
   useTreeExpansion,
@@ -24,6 +25,9 @@ function TreeViewContent() {
   const { tree, addChild, setSelectedNode, isHydrated } = useCapex();
   const { collapseAllToCountries } = useTreeExpansion();
   const [addDeliveryOpen, setAddDeliveryOpen] = useState(false);
+  const [wizardDelivery, setWizardDelivery] = useState<CapexTreeNode | null>(
+    null,
+  );
 
   const projectNames = useMemo(
     () =>
@@ -73,6 +77,7 @@ function TreeViewContent() {
     if (!activeProjectName) return;
     addChild(activeProjectName.id, child);
     setSelectedNode({ id: child.id, type: child.type, name: child.name });
+    setWizardDelivery(child);
   };
 
   const hasDeliveries = projectNames.some(
@@ -177,6 +182,32 @@ function TreeViewContent() {
           onOpenChange={setAddDeliveryOpen}
           parentNode={activeProjectName}
           onAdded={handleAddDelivery}
+        />
+      )}
+
+      {wizardDelivery && (
+        <CapexEntryWizard
+          open={!!wizardDelivery}
+          onOpenChange={(open) => {
+            if (!open) setWizardDelivery(null);
+          }}
+          deliveryNode={wizardDelivery}
+          onComplete={(rootNode, packageNodes) => {
+            addChild(wizardDelivery.id, rootNode);
+            setSelectedNode({
+              id: rootNode.id,
+              type: rootNode.type,
+              name: rootNode.name,
+            });
+            setWizardDelivery(null);
+            if (packageNodes[0]) {
+              setSelectedNode({
+                id: packageNodes[0].id,
+                type: packageNodes[0].type,
+                name: packageNodes[0].name,
+              });
+            }
+          }}
         />
       )}
     </div>

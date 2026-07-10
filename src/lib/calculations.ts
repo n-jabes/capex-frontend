@@ -1,75 +1,51 @@
-import type { FeatureCatalogItem, FeaturePurchaseData } from "@/types/capex";
+import type { PackagePurchaseData } from "@/types/capex";
 
-export function calcBuyingQuantity(current: number, newQty: number): number {
-  return newQty - current;
-}
-
-export function calcUsedQuantity(licenseQty: number, unusedQty: number): number {
-  return Math.max(0, licenseQty - unusedQty);
-}
-
-export function calcCurrentLicensePercent(unused: number, current: number): number {
-  if (current <= 0) return 0;
-  const used = calcUsedQuantity(current, unused);
-  return (used / current) * 100;
-}
-
-/** Used consumption stays the same after expansion; only the license pool grows. */
-export function calcAfterExpansionPercent(
-  unused: number,
-  current: number,
-  newQty: number,
+export function calcCurrentUtilization(
+  currentTraffic: number,
+  existingQty: number,
 ): number {
-  if (newQty <= 0) return 0;
-  const used = calcUsedQuantity(current, unused);
-  return (used / newQty) * 100;
+  if (existingQty <= 0) return 0;
+  return (currentTraffic / existingQty) * 100;
 }
 
-export function calcTotalPrice(buyingQty: number, unitPrice: number): number {
-  return buyingQty * unitPrice;
+export function calcExpansionUtilization(
+  currentTraffic: number,
+  existingQty: number,
+  expansionQty: number,
+): number {
+  const pool = existingQty + expansionQty;
+  if (pool <= 0) return 0;
+  return (currentTraffic / pool) * 100;
 }
 
-export interface ComputedPurchase {
-  buyingQuantity: number;
-  usedQuantity: number;
-  usedQuantityAfterExpansion: number;
-  currentLicensePercent: number;
-  afterExpansionPercent: number;
+export function calcPackageTotalPrice(
+  expansionQty: number,
+  unitPrice: number,
+): number {
+  return expansionQty * unitPrice;
+}
+
+export interface ComputedPackageMetrics {
+  expansionQty: number;
+  currentUtilization: number;
+  expansionUtilization: number;
   totalPrice: number;
 }
 
-export function computePurchaseMetrics(
-  purchase: FeaturePurchaseData,
-  unitPrice: number,
-): ComputedPurchase {
-  const buyingQuantity = calcBuyingQuantity(
-    purchase.currentLicenseQty,
-    purchase.newLicenseQty,
-  );
-  const usedQuantity = calcUsedQuantity(
-    purchase.currentLicenseQty,
-    purchase.trafficQty,
-  );
+export function computePackageMetrics(
+  data: PackagePurchaseData,
+): ComputedPackageMetrics {
   return {
-    buyingQuantity,
-    usedQuantity,
-    usedQuantityAfterExpansion: usedQuantity,
-    currentLicensePercent: calcCurrentLicensePercent(
-      purchase.trafficQty,
-      purchase.currentLicenseQty,
+    expansionQty: data.expansionQty,
+    currentUtilization: calcCurrentUtilization(
+      data.currentTraffic,
+      data.existingQty,
     ),
-    afterExpansionPercent: calcAfterExpansionPercent(
-      purchase.trafficQty,
-      purchase.currentLicenseQty,
-      purchase.newLicenseQty,
+    expansionUtilization: calcExpansionUtilization(
+      data.currentTraffic,
+      data.existingQty,
+      data.expansionQty,
     ),
-    totalPrice: calcTotalPrice(buyingQuantity, unitPrice),
+    totalPrice: calcPackageTotalPrice(data.expansionQty, data.unitPrice),
   };
-}
-
-export function getFeatureById(
-  features: FeatureCatalogItem[],
-  featureId: string,
-): FeatureCatalogItem | undefined {
-  return features.find((f) => f.id === featureId);
 }
