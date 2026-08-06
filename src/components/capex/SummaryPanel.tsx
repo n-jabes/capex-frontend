@@ -4,9 +4,6 @@ import { useMemo } from "react";
 import {
   DollarSign,
   Percent,
-  ShoppingCart,
-  Activity,
-  TrendingUp,
   Layers,
   AlertCircle,
   BadgePercent,
@@ -71,8 +68,8 @@ export function SummaryPanel() {
         <Layers className="h-10 w-10 text-muted-foreground/40" />
         <p className="text-sm font-medium">Select a tree node</p>
         <p className="max-w-xs text-xs text-muted-foreground">
-          Click any node in the CAPEX tree to view rolled-up cost, utilization,
-          and package details for that branch.
+          Click any node in the CAPEX tree to view rolled-up cost and package
+          details for that branch.
         </p>
       </div>
     );
@@ -191,34 +188,6 @@ export function SummaryPanel() {
   const hasPendingPackages = pendingPackages > 0;
   const childTypeLabel = getChildTypeForParent(node.type);
 
-  const kpiCards = [
-    {
-      title: "Total Price",
-      value: formatCurrency(metrics.totalCost),
-      icon: DollarSign,
-    },
-    {
-      title: "New License Qty",
-      value: formatNumber(metrics.expansionQuantity),
-      icon: ShoppingCart,
-    },
-    {
-      title: "Avg C. Utilization",
-      value: formatPercent(metrics.avgCurrentUtilization),
-      icon: Activity,
-    },
-    {
-      title: "Avg Exp. Utilization",
-      value: formatPercent(metrics.avgPostExpansionUtilization),
-      icon: TrendingUp,
-    },
-    {
-      title: "Packages",
-      value: `${metrics.packagesWithData}/${metrics.packageCount}`,
-      icon: Layers,
-    },
-  ];
-
   return (
     <div className="flex h-full flex-col overflow-auto">
       <div className="space-y-3 border-b px-6 py-4">
@@ -264,19 +233,19 @@ export function SummaryPanel() {
       ) : null}
 
       <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
-        {kpiCards.map((kpi) => (
-          <Card key={kpi.title} className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
-              <CardTitle className="text-xs font-medium text-muted-foreground">
-                {kpi.title}
-              </CardTitle>
-              <kpi.icon className="h-3.5 w-3.5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="px-4 pb-3">
-              <p className="text-xl font-bold">{kpi.value}</p>
-            </CardContent>
-          </Card>
-        ))}
+        <Card className="shadow-sm sm:col-span-1">
+          <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Total Price
+            </CardTitle>
+            <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <p className="text-xl font-bold">
+              {formatCurrency(metrics.totalCost)}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {childRollups.length > 0 ? (
@@ -323,7 +292,6 @@ function ChildRollupTable({
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
-          <TableHead>Type</TableHead>
           <TableHead className="text-right">New License Qty</TableHead>
           <TableHead className="text-right">Total price</TableHead>
           <TableHead className="text-right">Packages</TableHead>
@@ -333,9 +301,6 @@ function ChildRollupTable({
         {rows.map((row) => (
           <TableRow key={row.id}>
             <TableCell className="font-medium">{row.name}</TableCell>
-            <TableCell className="text-muted-foreground">
-              {nodeTypeLabel(row.type)}
-            </TableCell>
             <TableCell className="text-right">
               {row.metrics.packagesWithData > 0
                 ? formatNumber(row.metrics.expansionQuantity)
@@ -365,9 +330,8 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
     if (!pkg.packageData) {
       return {
         id: pkg.id,
-        name: pkg.name,
-        licensePackage: "—",
-        yearName: pkg.yearName,
+        licensePackage: pkg.name,
+        unit: "—",
         expansion: 0,
         total: 0,
         currentUtil: 0,
@@ -378,9 +342,8 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
     const metrics = computePackageMetrics(pkg.packageData);
     return {
       id: pkg.id,
-      name: pkg.name,
-      licensePackage: pkg.packageData.licensePackage,
-      yearName: pkg.yearName,
+      licensePackage: pkg.packageData.licensePackage || pkg.name,
+      unit: pkg.packageData.unit || "—",
       expansion: metrics.expansionQty,
       total: metrics.totalPrice,
       currentUtil: metrics.currentUtilization,
@@ -402,9 +365,7 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
       <TableHeader>
         <TableRow>
           <TableHead>License Package</TableHead>
-          <TableHead>Package</TableHead>
-          <TableHead>Year</TableHead>
-          <TableHead>Status</TableHead>
+          <TableHead>Unit</TableHead>
           <TableHead className="text-right">New License Qty</TableHead>
           <TableHead className="text-right">C. util</TableHead>
           <TableHead className="text-right">Exp. util</TableHead>
@@ -415,13 +376,7 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
         {packages.map((row) => (
           <TableRow key={row.id}>
             <TableCell className="font-medium">{row.licensePackage}</TableCell>
-            <TableCell>{row.name}</TableCell>
-            <TableCell>{row.yearName || "—"}</TableCell>
-            <TableCell>
-              <Badge variant={row.hasData ? "secondary" : "outline"}>
-                {row.hasData ? "Complete" : "Pending"}
-              </Badge>
-            </TableCell>
+            <TableCell>{row.unit}</TableCell>
             <TableCell className="text-right">
               {row.hasData ? formatNumber(row.expansion) : "—"}
             </TableCell>

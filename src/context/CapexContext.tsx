@@ -63,6 +63,10 @@ interface CapexContextValue {
     packageInstanceId: string,
     data: PackagePurchaseData,
   ) => void;
+  removeLicensePackage: (
+    vendorNodeNameId: string,
+    packageInstanceId: string,
+  ) => void;
   updateVendorNodeDiscount: (
     vendorNodeNameId: string,
     discountPercent: number,
@@ -233,6 +237,23 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     [setTree],
   );
 
+  const removeLicensePackage = useCallback(
+    (vendorNodeNameId: string, packageInstanceId: string) => {
+      setTree((prev) =>
+        updateNodeInTree(prev, vendorNodeNameId, (node) => ({
+          ...node,
+          licenseYears: (node.licenseYears ?? []).map((year) => ({
+            ...year,
+            packages: year.packages.filter(
+              (pkg) => pkg.id !== packageInstanceId,
+            ),
+          })),
+        })),
+      );
+    },
+    [setTree],
+  );
+
   const updateVendorNodeDiscount = useCallback(
     (vendorNodeNameId: string, discountPercent: number) => {
       const clamped = Math.min(100, Math.max(0, discountPercent));
@@ -262,6 +283,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       addChildren,
       updateVendorNodeLicenseYears,
       updateLicensePackageData,
+      removeLicensePackage,
       updateVendorNodeDiscount,
     }),
     [
@@ -279,6 +301,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       addChildren,
       updateVendorNodeLicenseYears,
       updateLicensePackageData,
+      removeLicensePackage,
       updateVendorNodeDiscount,
     ],
   );

@@ -30,20 +30,8 @@ interface ConfigureLicensePackagesDialogProps {
   vendorNodeName: CapexTreeNode;
 }
 
-function yearLabel(index: number): string {
-  const words = [
-    "One",
-    "Two",
-    "Three",
-    "Four",
-    "Five",
-    "Six",
-    "Seven",
-    "Eight",
-    "Nine",
-    "Ten",
-  ];
-  return `Year ${words[index] ?? index + 1}`;
+function defaultYearName(existingCount: number): string {
+  return String(new Date().getFullYear() + existingCount);
 }
 
 export function ConfigureLicensePackagesDialog({
@@ -64,7 +52,7 @@ export function ConfigureLicensePackagesDialog({
     } else {
       const first: LicenseYear = {
         id: `year-${generateId()}`,
-        name: "Year One",
+        name: defaultYearName(0),
         packages: [],
       };
       setYears([first]);
@@ -147,7 +135,7 @@ export function ConfigureLicensePackagesDialog({
   const addYear = () => {
     const next: LicenseYear = {
       id: `year-${generateId()}`,
-      name: yearLabel(years.length),
+      name: defaultYearName(years.length),
       packages: [],
     };
     setYears((prev) => [...prev, next]);
@@ -160,7 +148,7 @@ export function ConfigureLicensePackagesDialog({
       if (next.length === 0) {
         const fallback: LicenseYear = {
           id: `year-${generateId()}`,
-          name: "Year One",
+          name: defaultYearName(0),
           packages: [],
         };
         setActiveYearId(fallback.id);
@@ -223,13 +211,14 @@ export function ConfigureLicensePackagesDialog({
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
               <div className="flex shrink-0 items-end gap-2">
                 <div className="min-w-0 flex-1 space-y-2">
-                  <Label htmlFor="year-name">Year name</Label>
+                  <Label htmlFor="year-name">Year name (e.g. 2026)</Label>
                   <Input
                     id="year-name"
                     value={activeYear.name}
                     onChange={(event) =>
                       renameYear(activeYear.id, event.target.value)
                     }
+                    placeholder="e.g. 2026"
                   />
                 </div>
                 <Button
