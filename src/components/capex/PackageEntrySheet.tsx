@@ -21,10 +21,13 @@ import {
 } from "@/lib/calculations";
 import {
   validatePackagePurchaseData,
+  isTrafficOverExisting,
   type PackageEntryField,
 } from "@/lib/package-entry-validation";
 import type { CapexTreeNode, PackagePurchaseData } from "@/types/capex";
 import { PurchaseMetricsDisplay } from "@/components/capex/PurchaseMetricsDisplay";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function createDefaultForm(
@@ -95,6 +98,10 @@ export function PackageEntrySheet({
 
   const fieldError = (field: PackageEntryField) =>
     showErrors ? validation.errors[field] : undefined;
+
+  const trafficWarning = isTrafficOverExisting(form)
+    ? validation.warnings.currentTraffic
+    : undefined;
 
   const handleSave = () => {
     setShowErrors(true);
@@ -220,12 +227,31 @@ export function PackageEntrySheet({
                 onChange={(event) =>
                   patch({ currentTraffic: parseNumber(event.target.value) })
                 }
+                className={cn(
+                  fieldError("currentTraffic") && "border-destructive",
+                  trafficWarning &&
+                    !fieldError("currentTraffic") &&
+                    "border-amber-500",
+                )}
               />
               <p className="text-xs text-muted-foreground">
                 Used portion of existing (Ex License) quantity
               </p>
+              {fieldError("currentTraffic") ? (
+                <p className="text-xs text-destructive">
+                  {fieldError("currentTraffic")}
+                </p>
+              ) : null}
             </div>
           </div>
+
+          {trafficWarning ? (
+            <Alert className="border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-50">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertTitle>Traffic capacity warning</AlertTitle>
+              <AlertDescription>{trafficWarning}</AlertDescription>
+            </Alert>
+          ) : null}
 
           <PurchaseMetricsDisplay metrics={metrics} />
         </div>

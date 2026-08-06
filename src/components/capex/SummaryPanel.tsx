@@ -1,18 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  DollarSign,
-  Percent,
-  Layers,
-  AlertCircle,
-  BadgePercent,
-} from "lucide-react";
+import { DollarSign, Layers, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -30,16 +22,39 @@ import {
   findNode,
   findNodePath,
   computeSummaryForNode,
-  getChildTypeForParent,
   nodeTypeLabel,
+  supportsNodeDiscount,
+  toSelectedNode,
 } from "@/lib/tree-utils";
 import { computePackageMetrics } from "@/lib/calculations";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
+import { formatCurrency, formatPercent, expansionUtilToneClass } from "@/lib/format";
+import { collectTrafficWarnings } from "@/lib/traffic-warnings";
 import { SummaryBreadcrumb } from "@/components/capex/SummaryBreadcrumb";
 import { VendorNodeLicenseTable } from "@/components/capex/VendorNodeLicenseTable";
+import { DiscountStatCards } from "@/components/capex/DiscountStatCards";
+import { TrafficCapacityWarning } from "@/components/capex/TrafficCapacityWarning";
+import {
+  ColumnVisibilityMenu,
+  useColumnVisibility,
+  type TableColumnDef,
+} from "@/components/capex/ColumnVisibilityMenu";
+
+const ROLLUP_COLUMNS: TableColumnDef[] = [
+  { id: "name", label: "Name", locked: true },
+  { id: "totalPrice", label: "Total price" },
+  { id: "packages", label: "Packages" },
+];
+
+const PACKAGE_COLUMNS: TableColumnDef[] = [
+  { id: "licensePackage", label: "License Package", locked: true },
+  { id: "unit", label: "Unit" },
+  { id: "currentUtil", label: "C. util" },
+  { id: "expansionUtil", label: "Exp. util" },
+  { id: "totalPrice", label: "Total price" },
+];
 
 export function SummaryPanel() {
-  const { tree, selectedNode, isHydrated, updateVendorNodeDiscount } =
+  const { tree, selectedNode, isHydrated, updateNodeDiscount, setSelectedNode } =
     useCapex();
   const [vnnYearFilter, setVnnYearFilter] = useState<string>("all");
 
@@ -53,6 +68,7 @@ export function SummaryPanel() {
       path,
       metrics: computeSummaryForNode(node),
       childRollups: computeChildRollups(node),
+      trafficWarnings: collectTrafficWarnings(node),
     };
   }, [tree, selectedNode]);
 
@@ -81,10 +97,16 @@ export function SummaryPanel() {
     );
   }
 
-  const { node, path, metrics, childRollups } = summary;
+  const { node, path, metrics, childRollups, trafficWarnings } = summary;
   const isVnn = node.type === "vendorNodeName";
   const displayName =
     node.type === "vendor" ? displayVendorNodeName(node) : node.name;
+  const showDiscount = supportsNodeDiscount(node.type);
+
+  const goToWarningNode = (vendorNodeId: string) => {
+    const target = findNode(tree, vendorNodeId);
+    if (target) setSelectedNode(toSelectedNode(target));
+  };
 
   if (isVnn) {
     const yearMetrics = computeVendorNodeMetricsForYear(node, vnnYearFilter);
@@ -110,73 +132,20 @@ export function SummaryPanel() {
           </div>
         </div>
 
-        <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
-              <CardTitle className="text-xs font-medium text-muted-foreground">
-                Total Price
-              </CardTitle>
-              <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="px-4 pb-3">
-              <p className="text-xl font-bold">{formatCurrency(subtotal)}</p>
-            </CardContent>
-          </Card>
+        {trafficWarnings.length > 0 ? (
+          <div className="px-4 pt-4">
+            <TrafficCapacityWarning warnings={trafficWarnings} />
+          </div>
+        ) : null}
 
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
-              <CardTitle className="text-xs font-medium text-muted-foreground">
-                Discount %
-              </CardTitle>
-              <Percent className="h-3.5 w-3.5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="space-y-2 px-4 pb-3">
-              <Label htmlFor="discount-pct" className="sr-only">
-                Discount percent
-              </Label>
-              <Input
-                id="discount-pct"
-                type="number"
-                min={0}
-                max={100}
-                step="0.1"
-                value={discountPercent}
-                onChange={(event) => {
-                  const value = parseFloat(event.target.value);
-                  updateVendorNodeDiscount(
-                    node.id,
-                    Number.isNaN(value) ? 0 : value,
-                  );
-                }}
-              />
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
-              <CardTitle className="text-xs font-medium text-muted-foreground">
-                Discount Amount
-              </CardTitle>
-              <BadgePercent className="h-3.5 w-3.5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="px-4 pb-3">
-              <p className="text-xl font-bold">
-                {formatCurrency(discountAmount)}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm border-primary/20 bg-primary/5">
-            <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
-              <CardTitle className="text-xs font-medium text-muted-foreground">
-                After Discount
-              </CardTitle>
-              <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="px-4 pb-3">
-              <p className="text-xl font-bold">{formatCurrency(netTotal)}</p>
-            </CardContent>
-          </Card>
+        <div className="p-4">
+          <DiscountStatCards
+            subtotal={subtotal}
+            discountPercent={discountPercent}
+            discountAmount={discountAmount}
+            netTotal={netTotal}
+            onDiscountChange={(value) => updateNodeDiscount(node.id, value)}
+          />
         </div>
 
         <div className="px-4 pb-6">
@@ -199,7 +168,10 @@ export function SummaryPanel() {
 
   const pendingPackages = metrics.packageCount - metrics.packagesWithData;
   const hasPendingPackages = pendingPackages > 0;
-  const childTypeLabel = getChildTypeForParent(node.type);
+  const subtotal = metrics.subtotal ?? metrics.totalCost;
+  const discountPercent = metrics.discountPercent ?? node.discountPercent ?? 0;
+  const discountAmount = metrics.discountAmount ?? 0;
+  const netTotal = metrics.netTotal ?? metrics.totalCost;
 
   return (
     <div className="flex h-full flex-col overflow-auto">
@@ -211,7 +183,7 @@ export function SummaryPanel() {
           </Badge>
           <h2 className="text-lg font-semibold">{displayName}</h2>
           <p className="text-xs text-muted-foreground">
-            Roll-up for this {nodeTypeLabel(node.type).toLowerCase()} and all
+            Summary for this {nodeTypeLabel(node.type).toLowerCase()} and all
             nested packages
           </p>
         </div>
@@ -245,32 +217,49 @@ export function SummaryPanel() {
         </div>
       ) : null}
 
-      <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="shadow-sm sm:col-span-1">
-          <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Total Price
-            </CardTitle>
-            <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <p className="text-xl font-bold">
-              {formatCurrency(metrics.totalCost)}
-            </p>
-          </CardContent>
-        </Card>
+      {trafficWarnings.length > 0 ? (
+        <div className="px-4 pt-4">
+          <TrafficCapacityWarning
+            warnings={trafficWarnings}
+            onGoTo={goToWarningNode}
+          />
+        </div>
+      ) : null}
+
+      <div className="p-4">
+        {showDiscount ? (
+          <DiscountStatCards
+            subtotal={subtotal}
+            discountPercent={discountPercent}
+            discountAmount={discountAmount}
+            netTotal={netTotal}
+            onDiscountChange={(value) => updateNodeDiscount(node.id, value)}
+            inputId={`discount-pct-${node.id}`}
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Card className="shadow-sm sm:col-span-1">
+              <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
+                <CardTitle className="text-xs font-medium text-muted-foreground">
+                  Total Price
+                </CardTitle>
+                <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <p className="text-xl font-bold">
+                  {formatCurrency(metrics.totalCost)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
 
       {childRollups.length > 0 ? (
         <div className="px-4 pb-4">
           <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-sm">
-                Roll-up by{" "}
-                {childTypeLabel
-                  ? nodeTypeLabel(childTypeLabel).toLowerCase()
-                  : "child"}
-              </CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle className="text-sm">Summary</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <ChildRollupTable rows={childRollups} />
@@ -300,42 +289,64 @@ function ChildRollupTable({
 }: {
   rows: ReturnType<typeof computeChildRollups>;
 }) {
+  const { isVisible, toggle, columns } = useColumnVisibility(
+    "capex-cols-rollup",
+    ROLLUP_COLUMNS,
+  );
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead className="text-right">New License Qty</TableHead>
-          <TableHead className="text-right">Total price</TableHead>
-          <TableHead className="text-right">Packages</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row.id}>
-            <TableCell className="font-medium">{row.name}</TableCell>
-            <TableCell className="text-right">
-              {row.metrics.packagesWithData > 0
-                ? formatNumber(row.metrics.expansionQuantity)
-                : "—"}
-            </TableCell>
-            <TableCell className="text-right">
-              {row.metrics.packagesWithData > 0
-                ? formatCurrency(row.metrics.totalCost)
-                : "—"}
-            </TableCell>
-            <TableCell className="text-right">
-              {row.metrics.packagesWithData}/{row.metrics.packageCount}
-            </TableCell>
+    <div>
+      <div className="flex justify-end border-b px-4 py-2">
+        <ColumnVisibilityMenu
+          columns={columns}
+          isVisible={isVisible}
+          onToggle={toggle}
+        />
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {isVisible("name") ? <TableHead>Name</TableHead> : null}
+            {isVisible("totalPrice") ? (
+              <TableHead className="text-right">Total price</TableHead>
+            ) : null}
+            {isVisible("packages") ? (
+              <TableHead className="text-right">Packages</TableHead>
+            ) : null}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id}>
+              {isVisible("name") ? (
+                <TableCell className="font-medium">{row.name}</TableCell>
+              ) : null}
+              {isVisible("totalPrice") ? (
+                <TableCell className="text-right">
+                  {row.metrics.packagesWithData > 0
+                    ? formatCurrency(row.metrics.totalCost)
+                    : "—"}
+                </TableCell>
+              ) : null}
+              {isVisible("packages") ? (
+                <TableCell className="text-right">
+                  {row.metrics.packagesWithData}/{row.metrics.packageCount}
+                </TableCell>
+              ) : null}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
 function PackageTable({ treeNodeId }: { treeNodeId: string }) {
   const { tree } = useCapex();
+  const { isVisible, toggle, columns } = useColumnVisibility(
+    "capex-cols-packages-scope",
+    PACKAGE_COLUMNS,
+  );
   const node = findNode(tree, treeNodeId);
   if (!node) return null;
 
@@ -345,7 +356,6 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
         id: pkg.id,
         licensePackage: pkg.name,
         unit: "—",
-        expansion: 0,
         total: 0,
         currentUtil: 0,
         expansionUtil: 0,
@@ -357,7 +367,6 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
       id: pkg.id,
       licensePackage: pkg.packageData.licensePackage || pkg.name,
       unit: pkg.packageData.unit || "—",
-      expansion: metrics.expansionQty,
       total: metrics.totalPrice,
       currentUtil: metrics.currentUtilization,
       expansionUtil: metrics.expansionUtilization,
@@ -374,37 +383,67 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>License Package</TableHead>
-          <TableHead>Unit</TableHead>
-          <TableHead className="text-right">New License Qty</TableHead>
-          <TableHead className="text-right">C. util</TableHead>
-          <TableHead className="text-right">Exp. util</TableHead>
-          <TableHead className="text-right">Total price</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {packages.map((row) => (
-          <TableRow key={row.id}>
-            <TableCell className="font-medium">{row.licensePackage}</TableCell>
-            <TableCell>{row.unit}</TableCell>
-            <TableCell className="text-right">
-              {row.hasData ? formatNumber(row.expansion) : "—"}
-            </TableCell>
-            <TableCell className="text-right">
-              {row.hasData ? formatPercent(row.currentUtil) : "—"}
-            </TableCell>
-            <TableCell className="text-right">
-              {row.hasData ? formatPercent(row.expansionUtil) : "—"}
-            </TableCell>
-            <TableCell className="text-right">
-              {row.hasData ? formatCurrency(row.total) : "—"}
-            </TableCell>
+    <div>
+      <div className="flex justify-end border-b px-4 py-2">
+        <ColumnVisibilityMenu
+          columns={columns}
+          isVisible={isVisible}
+          onToggle={toggle}
+        />
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {isVisible("licensePackage") ? (
+              <TableHead>License Package</TableHead>
+            ) : null}
+            {isVisible("unit") ? <TableHead>Unit</TableHead> : null}
+            {isVisible("currentUtil") ? (
+              <TableHead className="text-right">C. util</TableHead>
+            ) : null}
+            {isVisible("expansionUtil") ? (
+              <TableHead className="text-right">Exp. util</TableHead>
+            ) : null}
+            {isVisible("totalPrice") ? (
+              <TableHead className="text-right">Total price</TableHead>
+            ) : null}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {packages.map((row) => (
+            <TableRow key={row.id}>
+              {isVisible("licensePackage") ? (
+                <TableCell className="font-medium">{row.licensePackage}</TableCell>
+              ) : null}
+              {isVisible("unit") ? <TableCell>{row.unit}</TableCell> : null}
+              {isVisible("currentUtil") ? (
+                <TableCell className="text-right">
+                  {row.hasData ? formatPercent(row.currentUtil) : "—"}
+                </TableCell>
+              ) : null}
+              {isVisible("expansionUtil") ? (
+                <TableCell
+                  className={`text-right ${
+                    row.hasData
+                      ? expansionUtilToneClass(
+                          row.expansionUtil,
+                          row.currentUtil,
+                        )
+                      : ""
+                  }`}
+                >
+                  {row.hasData ? formatPercent(row.expansionUtil) : "—"}
+                </TableCell>
+              ) : null}
+              {isVisible("totalPrice") ? (
+                <TableCell className="text-right">
+                  {row.hasData ? formatCurrency(row.total) : "—"}
+                </TableCell>
+              ) : null}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

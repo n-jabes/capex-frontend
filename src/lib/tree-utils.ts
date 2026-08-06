@@ -147,6 +147,18 @@ export function collectPackageNodes(node: CapexTreeNode): CapexTreeNode[] {
   }));
 }
 
+export function supportsNodeDiscount(
+  type: CapexTreeNode["type"],
+): boolean {
+  return (
+    type === "delivery" ||
+    type === "domain" ||
+    type === "node" ||
+    type === "vendor" ||
+    type === "vendorNodeName"
+  );
+}
+
 export function computeSummaryForNode(node: CapexTreeNode): SummaryMetrics {
   if (node.type === "vendorNodeName") {
     const packages = collectLicensePackages(node);
@@ -192,7 +204,7 @@ export function computeSummaryForNode(node: CapexTreeNode): SummaryMetrics {
       currentUtilSum += metrics.currentUtilization;
       postExpSum += metrics.expansionUtilization;
     }
-    return {
+    const base: SummaryMetrics = {
       totalCost: childMetrics.reduce((sum, m) => sum + m.totalCost, 0),
       expansionQuantity,
       avgCurrentUtilization: withData.length
@@ -204,6 +216,10 @@ export function computeSummaryForNode(node: CapexTreeNode): SummaryMetrics {
       packageCount: packages.length,
       packagesWithData: withData.length,
     };
+    if (supportsNodeDiscount(node.type)) {
+      return applyDiscountToMetrics(base, node.discountPercent ?? 0);
+    }
+    return base;
   }
 
   // Legacy package leaf

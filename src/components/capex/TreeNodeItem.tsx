@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { MouseEvent } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -10,6 +11,7 @@ import {
   Pencil,
   Trash2,
   Wand2,
+  AlertTriangle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -33,6 +35,10 @@ import {
   nodeTypeLabel,
   toSelectedNode,
 } from "@/lib/tree-utils";
+import {
+  findFirstWarningVendorNode,
+  nodeHasTrafficWarning,
+} from "@/lib/traffic-warnings";
 import { AddChildDialog } from "@/components/capex/AddChildDialog";
 import { CapexEntryWizard } from "@/components/capex/CapexEntryWizard";
 import { RenameDialog } from "@/components/capex/RenameDialog";
@@ -92,9 +98,19 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
 
   const displayName =
     node.type === "vendor" ? displayVendorNodeName(node) : node.name;
+  const hasTrafficWarning = nodeHasTrafficWarning(node);
 
   const handleSelect = () => {
     setSelectedNode(toSelectedNode(node));
+  };
+
+  const handleWarningClick = (event: MouseEvent) => {
+    event.stopPropagation();
+    const target = findFirstWarningVendorNode(node);
+    if (target) {
+      setSelectedNode(toSelectedNode(target));
+      setExpanded(target.id, true);
+    }
   };
 
   const handleRowClick = () => {
@@ -147,6 +163,19 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
             </span>
             <span className="text-base leading-none">{typeIcons[node.type]}</span>
             <span className="truncate font-medium">{displayName}</span>
+            {hasTrafficWarning ? (
+              <Tooltip>
+                <TooltipTrigger
+                  className="inline-flex shrink-0"
+                  onClick={handleWarningClick}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  Traffic exceeds Ex License Quantity — click to open
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
             {node.type === "vendorNodeName" && packageCount > 0 ? (
               <Badge
                 variant="secondary"

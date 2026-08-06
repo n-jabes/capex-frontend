@@ -71,6 +71,7 @@ interface CapexContextValue {
     vendorNodeNameId: string,
     discountPercent: number,
   ) => void;
+  updateNodeDiscount: (nodeId: string, discountPercent: number) => void;
 }
 
 const CapexContext = createContext<CapexContextValue | null>(null);
@@ -254,11 +255,11 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     [setTree],
   );
 
-  const updateVendorNodeDiscount = useCallback(
-    (vendorNodeNameId: string, discountPercent: number) => {
+  const updateNodeDiscount = useCallback(
+    (nodeId: string, discountPercent: number) => {
       const clamped = Math.min(100, Math.max(0, discountPercent));
       setTree((prev) =>
-        updateNodeInTree(prev, vendorNodeNameId, (node) => ({
+        updateNodeInTree(prev, nodeId, (node) => ({
           ...node,
           discountPercent: clamped,
         })),
@@ -266,6 +267,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     },
     [setTree],
   );
+
+  /** @deprecated Prefer updateNodeDiscount */
+  const updateVendorNodeDiscount = updateNodeDiscount;
 
   const value = useMemo(
     () => ({
@@ -285,6 +289,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       updateLicensePackageData,
       removeLicensePackage,
       updateVendorNodeDiscount,
+      updateNodeDiscount,
     }),
     [
       tree,
@@ -303,6 +308,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       updateLicensePackageData,
       removeLicensePackage,
       updateVendorNodeDiscount,
+      updateNodeDiscount,
     ],
   );
 

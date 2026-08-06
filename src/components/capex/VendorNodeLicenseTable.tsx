@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,13 +21,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { LicensePackageEntryDialog } from "@/components/capex/LicensePackageEntryDialog";
+import {
+  ColumnVisibilityMenu,
+  useColumnVisibility,
+  type TableColumnDef,
+} from "@/components/capex/ColumnVisibilityMenu";
 import { useCapex, generateId } from "@/context/CapexContext";
 import { getPackageVendorNodeNameIds } from "@/lib/catalog-utils";
 import {
   computePackageMetrics,
   normalizeMultiplier,
 } from "@/lib/calculations";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
+import { formatCurrency, formatNumber, formatPercent, expansionUtilToneClass } from "@/lib/format";
+import { isTrafficOverExisting } from "@/lib/package-entry-validation";
 import { cn } from "@/lib/utils";
 import type {
   CapexTreeNode,
@@ -35,6 +41,20 @@ import type {
   LicenseYear,
   PackageCatalogItem,
 } from "@/types/capex";
+
+const VNN_COLUMNS: TableColumnDef[] = [
+  { id: "select", label: "Select", locked: true },
+  { id: "licensePackage", label: "License Package", locked: true },
+  { id: "unit", label: "Unit" },
+  { id: "expansionQty", label: "New License Qty" },
+  { id: "existingQty", label: "Ex License Qty" },
+  { id: "currentTraffic", label: "C. traffic" },
+  { id: "currentUtil", label: "C. util" },
+  { id: "expansionUtil", label: "Exp. util" },
+  { id: "unitPrice", label: "Unit Price" },
+  { id: "multiplier", label: "Multiplier" },
+  { id: "totalPrice", label: "Total Price" },
+];
 
 interface VendorNodeLicenseTableProps {
   vendorNodeName: CapexTreeNode;
@@ -54,6 +74,10 @@ export function VendorNodeLicenseTable({
   const [editing, setEditing] = useState<LicensePackageInstance | null>(null);
   const [newYearName, setNewYearName] = useState("");
   const [showAddYear, setShowAddYear] = useState(false);
+  const { isVisible, toggle, columns } = useColumnVisibility(
+    "capex-cols-vnn-packages",
+    VNN_COLUMNS,
+  );
 
   const years = vendorNodeName.licenseYears ?? [];
   const isAllYears = yearFilter === "all";
@@ -302,6 +326,11 @@ export function VendorNodeLicenseTable({
             ? `${catalogPackages.length} packages available`
             : `${selectedCount} selected · ${catalogPackages.length} available`}
         </p>
+        <ColumnVisibilityMenu
+          columns={columns}
+          isVisible={isVisible}
+          onToggle={toggle}
+        />
       </div>
 
       {years.length === 0 ? (
@@ -320,19 +349,41 @@ export function VendorNodeLicenseTable({
             <Table className="min-w-[980px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-10"> </TableHead>
-                  <TableHead className="sticky left-0 z-10 min-w-[180px] bg-card">
-                    License Package
-                  </TableHead>
-                  <TableHead className="min-w-[80px]">Unit</TableHead>
-                  <TableHead className="text-right">New License Qty</TableHead>
-                  <TableHead className="text-right">Ex License Qty</TableHead>
-                  <TableHead className="text-right">C. traffic</TableHead>
-                  <TableHead className="text-right">C. util</TableHead>
-                  <TableHead className="text-right">Exp. util</TableHead>
-                  <TableHead className="text-right">Unit Price</TableHead>
-                  <TableHead className="text-right">Multiplier</TableHead>
-                  <TableHead className="text-right">Total Price</TableHead>
+                  {isVisible("select") ? (
+                    <TableHead className="w-10"> </TableHead>
+                  ) : null}
+                  {isVisible("licensePackage") ? (
+                    <TableHead className="sticky left-0 z-10 min-w-[180px] bg-card">
+                      License Package
+                    </TableHead>
+                  ) : null}
+                  {isVisible("unit") ? (
+                    <TableHead className="min-w-[80px]">Unit</TableHead>
+                  ) : null}
+                  {isVisible("expansionQty") ? (
+                    <TableHead className="text-right">New License Qty</TableHead>
+                  ) : null}
+                  {isVisible("existingQty") ? (
+                    <TableHead className="text-right">Ex License Qty</TableHead>
+                  ) : null}
+                  {isVisible("currentTraffic") ? (
+                    <TableHead className="text-right">C. traffic</TableHead>
+                  ) : null}
+                  {isVisible("currentUtil") ? (
+                    <TableHead className="text-right">C. util</TableHead>
+                  ) : null}
+                  {isVisible("expansionUtil") ? (
+                    <TableHead className="text-right">Exp. util</TableHead>
+                  ) : null}
+                  {isVisible("unitPrice") ? (
+                    <TableHead className="text-right">Unit Price</TableHead>
+                  ) : null}
+                  {isVisible("multiplier") ? (
+                    <TableHead className="text-right">Multiplier</TableHead>
+                  ) : null}
+                  {isVisible("totalPrice") ? (
+                    <TableHead className="text-right">Total Price</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -344,6 +395,9 @@ export function VendorNodeLicenseTable({
                   const licenseName =
                     data?.licensePackage?.trim() || catalog.licensePackage;
                   const canEdit = !isAllYears && !!activeYear;
+                  const trafficWarn = data
+                    ? isTrafficOverExisting(data)
+                    : false;
 
                   return (
                     <TableRow
@@ -352,71 +406,113 @@ export function VendorNodeLicenseTable({
                         canEdit && "cursor-pointer",
                         !canEdit && "opacity-80",
                         selected && selectedRowClass,
+                        trafficWarn &&
+                          "bg-amber-50/90 dark:bg-amber-950/25 hover:bg-amber-50 dark:hover:bg-amber-950/35",
                       )}
                       onClick={() => {
                         if (canEdit) openEditor(catalog);
                       }}
                     >
-                      <TableCell
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (canEdit) toggleCatalogPackage(catalog);
-                        }}
-                      >
-                        <span
+                      {isVisible("select") ? (
+                        <TableCell
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (canEdit) toggleCatalogPackage(catalog);
+                          }}
+                        >
+                          <span
+                            className={cn(
+                              "inline-flex h-5 w-5 items-center justify-center rounded border",
+                              selected &&
+                                "border-emerald-600 bg-emerald-600 text-white",
+                              !canEdit && "opacity-50",
+                            )}
+                          >
+                            {selected ? "✓" : null}
+                          </span>
+                        </TableCell>
+                      ) : null}
+                      {isVisible("licensePackage") ? (
+                        <TableCell
                           className={cn(
-                            "inline-flex h-5 w-5 items-center justify-center rounded border",
-                            selected &&
-                              "border-emerald-600 bg-emerald-600 text-white",
-                            !canEdit && "opacity-50",
+                            "sticky left-0 z-10 font-medium",
+                            trafficWarn
+                              ? "bg-amber-50/90 dark:bg-amber-950/25"
+                              : selected
+                                ? "bg-emerald-50/80 dark:bg-emerald-950/30"
+                                : "bg-card",
                           )}
                         >
-                          {selected ? "✓" : null}
-                        </span>
-                      </TableCell>
-                      <TableCell
-                        className={cn(
-                          "sticky left-0 z-10 font-medium",
-                          selected
-                            ? "bg-emerald-50/80 dark:bg-emerald-950/30"
-                            : "bg-card",
-                        )}
-                      >
-                        {licenseName}
-                      </TableCell>
-                      <TableCell>{data?.unit || catalog.unit || "—"}</TableCell>
-                      <TableCell className="text-right">
-                        {data ? formatNumber(data.expansionQty) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {data ? formatNumber(data.existingQty) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {data ? formatNumber(data.currentTraffic) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {metrics
-                          ? formatPercent(metrics.currentUtilization)
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {metrics
-                          ? formatPercent(metrics.expansionUtilization)
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {data
-                          ? formatCurrency(data.unitPrice)
-                          : formatCurrency(catalog.unitPrice)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {data
-                          ? formatNumber(normalizeMultiplier(data.multiplier))
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {metrics ? formatCurrency(metrics.totalPrice) : "—"}
-                      </TableCell>
+                          <span className="inline-flex items-center gap-1.5">
+                            {trafficWarn ? (
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                            ) : null}
+                            {licenseName}
+                          </span>
+                        </TableCell>
+                      ) : null}
+                      {isVisible("unit") ? (
+                        <TableCell>
+                          {data?.unit || catalog.unit || "—"}
+                        </TableCell>
+                      ) : null}
+                      {isVisible("expansionQty") ? (
+                        <TableCell className="text-right">
+                          {data ? formatNumber(data.expansionQty) : "—"}
+                        </TableCell>
+                      ) : null}
+                      {isVisible("existingQty") ? (
+                        <TableCell className="text-right">
+                          {data ? formatNumber(data.existingQty) : "—"}
+                        </TableCell>
+                      ) : null}
+                      {isVisible("currentTraffic") ? (
+                        <TableCell className="text-right">
+                          {data ? formatNumber(data.currentTraffic) : "—"}
+                        </TableCell>
+                      ) : null}
+                      {isVisible("currentUtil") ? (
+                        <TableCell className="text-right">
+                          {metrics
+                            ? formatPercent(metrics.currentUtilization)
+                            : "—"}
+                        </TableCell>
+                      ) : null}
+                      {isVisible("expansionUtil") ? (
+                        <TableCell
+                          className={`text-right ${
+                            metrics
+                              ? expansionUtilToneClass(
+                                  metrics.expansionUtilization,
+                                  metrics.currentUtilization,
+                                )
+                              : ""
+                          }`}
+                        >
+                          {metrics
+                            ? formatPercent(metrics.expansionUtilization)
+                            : "—"}
+                        </TableCell>
+                      ) : null}
+                      {isVisible("unitPrice") ? (
+                        <TableCell className="text-right">
+                          {data
+                            ? formatCurrency(data.unitPrice)
+                            : formatCurrency(catalog.unitPrice)}
+                        </TableCell>
+                      ) : null}
+                      {isVisible("multiplier") ? (
+                        <TableCell className="text-right">
+                          {data
+                            ? formatNumber(normalizeMultiplier(data.multiplier))
+                            : "—"}
+                        </TableCell>
+                      ) : null}
+                      {isVisible("totalPrice") ? (
+                        <TableCell className="text-right font-medium">
+                          {metrics ? formatCurrency(metrics.totalPrice) : "—"}
+                        </TableCell>
+                      ) : null}
                     </TableRow>
                   );
                 })}

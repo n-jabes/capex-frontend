@@ -46,7 +46,7 @@ export interface CapexTreeNode {
   catalogId?: string;
   /** Free-text site name when type === "vendor" (name holds vendor catalog name) */
   siteName?: string;
-  /** Discount % when type === "vendorNodeName" (0–100) */
+  /** Discount % (0–100) for delivery → vendorNodeName levels */
   discountPercent?: number;
   /** Year-scoped package selections when type === "vendorNodeName" */
   licenseYears?: LicenseYear[];
