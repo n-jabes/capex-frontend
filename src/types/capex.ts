@@ -8,14 +8,33 @@ export type TreeNodeType =
   | "vendorNodeName"
   | "package";
 
-/** CAPEX quantity data for a package leaf — full form in Phase 4. */
+/** CAPEX quantity data for a license package instance. */
 export interface PackagePurchaseData {
   licensePackage: string;
   unit: string;
+  /** UI label: New License Quantity */
   expansionQty: number;
+  /** UI label: Ex License Quantity */
   existingQty: number;
   currentTraffic: number;
   unitPrice: number;
+  /** Unit scale factor (e.g. 1000 for KSAU→SAU). Default 1, never negative. */
+  multiplier: number;
+}
+
+/** Selected package within a license year under a vendor node name. */
+export interface LicensePackageInstance {
+  id: string;
+  catalogId: string;
+  name: string;
+  packageData?: PackagePurchaseData;
+}
+
+/** Year bucket of selected packages under a vendor node name. */
+export interface LicenseYear {
+  id: string;
+  name: string;
+  packages: LicensePackageInstance[];
 }
 
 export interface CapexTreeNode {
@@ -25,7 +44,13 @@ export interface CapexTreeNode {
   children: CapexTreeNode[];
   /** Reference to a catalog entry when created from a preset */
   catalogId?: string;
-  /** Populated when package CAPEX is entered (Phase 4) */
+  /** Free-text site name when type === "vendor" (name holds vendor catalog name) */
+  siteName?: string;
+  /** Discount % when type === "vendorNodeName" (0–100) */
+  discountPercent?: number;
+  /** Year-scoped package selections when type === "vendorNodeName" */
+  licenseYears?: LicenseYear[];
+  /** Legacy package leaf CAPEX data (migrated into licenseYears) */
   packageData?: PackagePurchaseData;
 }
 
@@ -42,6 +67,11 @@ export interface SummaryMetrics {
   avgPostExpansionUtilization: number;
   packageCount: number;
   packagesWithData: number;
+  /** Pre-discount subtotal (VNN nodes) */
+  subtotal?: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  netTotal?: number;
 }
 
 /** Simple name-based catalog entry (project names, deliveries, domains, nodes, vendors). */

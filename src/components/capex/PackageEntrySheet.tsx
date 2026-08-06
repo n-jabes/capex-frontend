@@ -15,7 +15,10 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useCapex } from "@/context/CapexContext";
 import { getPackageCatalogItem } from "@/lib/catalog-utils";
-import { computePackageMetrics } from "@/lib/calculations";
+import {
+  computePackageMetrics,
+  normalizeMultiplier,
+} from "@/lib/calculations";
 import {
   validatePackagePurchaseData,
   type PackageEntryField,
@@ -32,7 +35,12 @@ function createDefaultForm(
     unitPrice: number;
   },
 ): PackagePurchaseData {
-  if (node.packageData) return { ...node.packageData };
+  if (node.packageData) {
+    return {
+      ...node.packageData,
+      multiplier: normalizeMultiplier(node.packageData.multiplier),
+    };
+  }
   return {
     licensePackage: catalogDefaults?.licensePackage ?? node.name,
     unit: catalogDefaults?.unit ?? "",
@@ -40,6 +48,7 @@ function createDefaultForm(
     existingQty: 0,
     currentTraffic: 0,
     unitPrice: catalogDefaults?.unitPrice ?? 0,
+    multiplier: 1,
   };
 }
 
@@ -49,6 +58,7 @@ interface PackageEntrySheetProps {
   packageNode: CapexTreeNode;
 }
 
+/** Legacy sheet for package tree leaves — prefer LicensePackageEntryDialog. */
 export function PackageEntrySheet({
   open,
   onOpenChange,
@@ -89,7 +99,10 @@ export function PackageEntrySheet({
   const handleSave = () => {
     setShowErrors(true);
     if (!validation.valid) return;
-    updatePackageData(packageNode.id, form);
+    updatePackageData(packageNode.id, {
+      ...form,
+      multiplier: normalizeMultiplier(form.multiplier),
+    });
     onOpenChange(false);
   };
 
@@ -100,7 +113,6 @@ export function PackageEntrySheet({
           <SheetTitle>Package CAPEX Entry</SheetTitle>
           <SheetDescription>
             Enter quantities and pricing for <strong>{packageNode.name}</strong>.
-            Utilization metrics update live as you type.
           </SheetDescription>
         </SheetHeader>
 
@@ -116,13 +128,10 @@ export function PackageEntrySheet({
                 onChange={(event) =>
                   patch({ licensePackage: event.target.value })
                 }
-                className={cn(fieldError("licensePackage") && "border-destructive")}
+                className={cn(
+                  fieldError("licensePackage") && "border-destructive",
+                )}
               />
-              {fieldError("licensePackage") ? (
-                <p className="text-xs text-destructive">
-                  {fieldError("licensePackage")}
-                </p>
-              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="unit" required>
@@ -132,11 +141,7 @@ export function PackageEntrySheet({
                 id="unit"
                 value={form.unit}
                 onChange={(event) => patch({ unit: event.target.value })}
-                className={cn(fieldError("unit") && "border-destructive")}
               />
-              {fieldError("unit") ? (
-                <p className="text-xs text-destructive">{fieldError("unit")}</p>
-              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="unit-price" required>
@@ -151,13 +156,24 @@ export function PackageEntrySheet({
                 onChange={(event) =>
                   patch({ unitPrice: parseNumber(event.target.value) })
                 }
-                className={cn(fieldError("unitPrice") && "border-destructive")}
               />
-              {fieldError("unitPrice") ? (
-                <p className="text-xs text-destructive">
-                  {fieldError("unitPrice")}
-                </p>
-              ) : null}
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="multiplier" required>
+                Multiplier
+              </Label>
+              <Input
+                id="multiplier"
+                type="number"
+                min={0}
+                step="1"
+                value={form.multiplier}
+                onChange={(event) =>
+                  patch({
+                    multiplier: Math.max(0, parseNumber(event.target.value)),
+                  })
+                }
+              />
             </div>
           </div>
 
@@ -166,45 +182,31 @@ export function PackageEntrySheet({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="exp-qty" required>
-                Exp. quantity
+                New License Quantity
               </Label>
               <Input
                 id="exp-qty"
                 type="number"
                 min={0}
-                step="1"
                 value={form.expansionQty}
                 onChange={(event) =>
                   patch({ expansionQty: parseNumber(event.target.value) })
                 }
-                className={cn(fieldError("expansionQty") && "border-destructive")}
               />
-              {fieldError("expansionQty") ? (
-                <p className="text-xs text-destructive">
-                  {fieldError("expansionQty")}
-                </p>
-              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="et-qty" required>
-                Et. quantity
+                Ex License Quantity
               </Label>
               <Input
                 id="et-qty"
                 type="number"
                 min={0}
-                step="1"
                 value={form.existingQty}
                 onChange={(event) =>
                   patch({ existingQty: parseNumber(event.target.value) })
                 }
-                className={cn(fieldError("existingQty") && "border-destructive")}
               />
-              {fieldError("existingQty") ? (
-                <p className="text-xs text-destructive">
-                  {fieldError("existingQty")}
-                </p>
-              ) : null}
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="c-traffic" required>
@@ -214,21 +216,14 @@ export function PackageEntrySheet({
                 id="c-traffic"
                 type="number"
                 min={0}
-                step="1"
                 value={form.currentTraffic}
                 onChange={(event) =>
                   patch({ currentTraffic: parseNumber(event.target.value) })
                 }
-                className={cn(fieldError("currentTraffic") && "border-destructive")}
               />
               <p className="text-xs text-muted-foreground">
-                Used portion of existing (Et.) quantity
+                Used portion of existing (Ex License) quantity
               </p>
-              {fieldError("currentTraffic") ? (
-                <p className="text-xs text-destructive">
-                  {fieldError("currentTraffic")}
-                </p>
-              ) : null}
             </div>
           </div>
 

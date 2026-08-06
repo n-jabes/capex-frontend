@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
-  FileSpreadsheet,
   FoldVertical,
   MoreHorizontal,
   Plus,
@@ -29,15 +28,14 @@ import { useCapex } from "@/context/CapexContext";
 import type { CapexTreeNode } from "@/types/capex";
 import {
   collapseToChildTypeLabel,
-  findNode,
+  displayVendorNodeName,
   getChildTypeForParent,
   nodeTypeLabel,
   toSelectedNode,
 } from "@/lib/tree-utils";
 import { AddChildDialog } from "@/components/capex/AddChildDialog";
-import { AddPackagesDialog } from "@/components/capex/AddPackagesDialog";
+import { ConfigureLicensePackagesDialog } from "@/components/capex/ConfigureLicensePackagesDialog";
 import { CapexEntryWizard } from "@/components/capex/CapexEntryWizard";
-import { PackageEntrySheet } from "@/components/capex/PackageEntrySheet";
 import { RenameDialog } from "@/components/capex/RenameDialog";
 import { useTreeExpansion } from "@/components/capex/TreeExpansionContext";
 import {
@@ -64,34 +62,39 @@ interface TreeNodeProps {
 
 export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
   const {
-    tree,
     selectedNode,
     setSelectedNode,
     addChild,
-    addChildren,
     renameNode,
     deleteNode,
   } = useCapex();
   const { isExpanded, setExpanded, collapseNodeToDirectChildren } =
     useTreeExpansion();
   const [addOpen, setAddOpen] = useState(false);
-  const [addPackagesOpen, setAddPackagesOpen] = useState(false);
+  const [configureOpen, setConfigureOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
-  const [entryNodeId, setEntryNodeId] = useState<string | null>(null);
 
   const expanded = isExpanded(node.id);
   const collapseLabel = collapseToChildTypeLabel(node.type);
-  const entryNode = entryNodeId ? findNode(tree, entryNodeId) : null;
 
   const isSelected = selectedNode?.id === node.id;
   const childType = getChildTypeForParent(node.type);
   const canAddChild = childType !== null;
-  const usesPackagePicker = childType === "package";
+  const canConfigurePackages = node.type === "vendorNodeName";
   const canRename = node.type !== "package";
   const canDelete = !["country", "projectName"].includes(node.type);
   const hasChildren = node.children.length > 0;
-  const hasCapexData = node.type === "package" && !!node.packageData;
+  const packageCount =
+    node.type === "vendorNodeName"
+      ? (node.licenseYears ?? []).reduce(
+          (sum, year) => sum + year.packages.length,
+          0,
+        )
+      : 0;
+
+  const displayName =
+    node.type === "vendor" ? displayVendorNodeName(node) : node.name;
 
   const handleSelect = () => {
     setSelectedNode(toSelectedNode(node));
@@ -99,10 +102,6 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
 
   const handleRowClick = () => {
     handleSelect();
-    if (node.type === "package" && !node.packageData) {
-      setEntryNodeId(node.id);
-      return;
-    }
     if (hasChildren) {
       setExpanded(node.id, !expanded);
     }
@@ -114,25 +113,10 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
     setSelectedNode(toSelectedNode(child));
   };
 
-  const handleAddPackages = (children: CapexTreeNode[]) => {
-    addChildren(node.id, children);
-    setExpanded(node.id, true);
-    if (children[0]) {
-      setSelectedNode(toSelectedNode(children[0]));
-      setEntryNodeId(children[0].id);
-    }
-  };
-
-  const handleWizardComplete = (
-    rootNode: CapexTreeNode,
-    packageNodes: CapexTreeNode[],
-  ) => {
+  const handleWizardComplete = (rootNode: CapexTreeNode) => {
     addChild(node.id, rootNode);
     setExpanded(node.id, true);
     setSelectedNode(toSelectedNode(rootNode));
-    if (packageNodes[0]) {
-      setEntryNodeId(packageNodes[0].id);
-    }
   };
 
   return (
@@ -165,14 +149,13 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
               )}
             </span>
             <span className="text-base leading-none">{typeIcons[node.type]}</span>
-            <span className="truncate font-medium">{node.name}</span>
-            {hasCapexData ? (
-              <Badge variant="secondary" className="ml-1 hidden h-5 px-1.5 text-[10px] sm:inline-flex">
-                CAPEX
-              </Badge>
-            ) : node.type === "package" ? (
-              <Badge variant="outline" className="ml-1 hidden h-5 px-1.5 text-[10px] text-amber-700 sm:inline-flex">
-                No data
+            <span className="truncate font-medium">{displayName}</span>
+            {canConfigurePackages && packageCount > 0 ? (
+              <Badge
+                variant="secondary"
+                className="ml-1 hidden h-5 px-1.5 text-[10px] sm:inline-flex"
+              >
+                {packageCount} pkg
               </Badge>
             ) : null}
             <span className="hidden text-[10px] uppercase tracking-wide text-muted-foreground sm:inline">
@@ -208,22 +191,16 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
                   Guided CAPEX entry
                 </DropdownMenuItem>
               )}
-              {canAddChild && !usesPackagePicker && (
+              {canAddChild && (
                 <DropdownMenuItem onClick={() => setAddOpen(true)}>
                   <Plus className="mr-2 h-4 w-4" />
                   Add {nodeTypeLabel(childType!)}
                 </DropdownMenuItem>
               )}
-              {usesPackagePicker && (
-                <DropdownMenuItem onClick={() => setAddPackagesOpen(true)}>
+              {canConfigurePackages && (
+                <DropdownMenuItem onClick={() => setConfigureOpen(true)}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Select packages
-                </DropdownMenuItem>
-              )}
-              {node.type === "package" && (
-                <DropdownMenuItem onClick={() => setEntryNodeId(node.id)}>
-                  <FileSpreadsheet className="mr-2 h-4 w-4" />
-                  {hasCapexData ? "Edit CAPEX entry" : "Enter CAPEX data"}
+                  Configure license packages
                 </DropdownMenuItem>
               )}
               {canRename && (
@@ -250,14 +227,16 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
 
         {hasChildren && (
           <CollapsibleContent>
-            {node.children.map((child) => (
-              <TreeNodeItem key={child.id} node={child} depth={depth + 1} />
-            ))}
+            {node.children
+              .filter((child) => child.type !== "package")
+              .map((child) => (
+                <TreeNodeItem key={child.id} node={child} depth={depth + 1} />
+              ))}
           </CollapsibleContent>
         )}
       </Collapsible>
 
-      {canAddChild && !usesPackagePicker && (
+      {canAddChild && (
         <AddChildDialog
           open={addOpen}
           onOpenChange={setAddOpen}
@@ -266,12 +245,11 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
         />
       )}
 
-      {usesPackagePicker && (
-        <AddPackagesDialog
-          open={addPackagesOpen}
-          onOpenChange={setAddPackagesOpen}
-          parentNode={node}
-          onAdded={handleAddPackages}
+      {canConfigurePackages && (
+        <ConfigureLicensePackagesDialog
+          open={configureOpen}
+          onOpenChange={setConfigureOpen}
+          vendorNodeName={node}
         />
       )}
 
@@ -284,21 +262,13 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
         />
       )}
 
-      {entryNode?.type === "package" && (
-        <PackageEntrySheet
-          open={!!entryNodeId}
-          onOpenChange={(open) => {
-            if (!open) setEntryNodeId(null);
-          }}
-          packageNode={entryNode}
-        />
-      )}
-
       {canRename && (
         <RenameDialog
           open={renameOpen}
           onOpenChange={setRenameOpen}
-          currentName={node.name}
+          currentName={
+            node.type === "vendor" ? (node.siteName ?? node.name) : node.name
+          }
           nodeType={nodeTypeLabel(node.type)}
           onRename={(name) => renameNode(node.id, name)}
         />

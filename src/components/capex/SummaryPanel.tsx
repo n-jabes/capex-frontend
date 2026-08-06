@@ -3,15 +3,19 @@
 import { useMemo } from "react";
 import {
   DollarSign,
+  Percent,
   ShoppingCart,
   Activity,
   TrendingUp,
   Layers,
   AlertCircle,
+  BadgePercent,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -22,8 +26,9 @@ import {
 } from "@/components/ui/table";
 import { useCapex } from "@/context/CapexContext";
 import {
-  collectPackageNodes,
+  collectLicensePackages,
   computeChildRollups,
+  displayVendorNodeName,
   findNode,
   findNodePath,
   computeSummaryForNode,
@@ -32,11 +37,12 @@ import {
 } from "@/lib/tree-utils";
 import { computePackageMetrics } from "@/lib/calculations";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
-import { PurchaseMetricsDisplay } from "@/components/capex/PurchaseMetricsDisplay";
 import { SummaryBreadcrumb } from "@/components/capex/SummaryBreadcrumb";
+import { VendorNodeLicenseTable } from "@/components/capex/VendorNodeLicenseTable";
 
 export function SummaryPanel() {
-  const { tree, selectedNode, isHydrated } = useCapex();
+  const { tree, selectedNode, isHydrated, updateVendorNodeDiscount } =
+    useCapex();
 
   const summary = useMemo(() => {
     if (!selectedNode) return null;
@@ -50,16 +56,6 @@ export function SummaryPanel() {
       childRollups: computeChildRollups(node),
     };
   }, [tree, selectedNode]);
-
-  const packageDetails = useMemo(() => {
-    if (!summary || summary.node.type !== "package") return null;
-    const node = summary.node;
-    if (!node.packageData) return null;
-    return {
-      data: node.packageData,
-      computed: computePackageMetrics(node.packageData),
-    };
-  }, [summary]);
 
   if (!isHydrated) {
     return (
@@ -83,9 +79,116 @@ export function SummaryPanel() {
   }
 
   const { node, path, metrics, childRollups } = summary;
+  const isVnn = node.type === "vendorNodeName";
+  const displayName =
+    node.type === "vendor" ? displayVendorNodeName(node) : node.name;
+
+  if (isVnn) {
+    const subtotal = metrics.subtotal ?? metrics.totalCost;
+    const discountPercent = metrics.discountPercent ?? node.discountPercent ?? 0;
+    const discountAmount = metrics.discountAmount ?? 0;
+    const netTotal = metrics.netTotal ?? metrics.totalCost;
+
+    return (
+      <div className="flex h-full flex-col overflow-auto">
+        <div className="space-y-3 border-b px-6 py-4">
+          <SummaryBreadcrumb path={path} />
+          <div>
+            <Badge variant="outline" className="mb-2">
+              {nodeTypeLabel(node.type)}
+            </Badge>
+            <h2 className="text-lg font-semibold">{displayName}</h2>
+            <p className="text-xs text-muted-foreground">
+              License packages by year — select a row to enter CAPEX quantities.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Total Price
+              </CardTitle>
+              <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <p className="text-xl font-bold">{formatCurrency(subtotal)}</p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Discount %
+              </CardTitle>
+              <Percent className="h-3.5 w-3.5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="space-y-2 px-4 pb-3">
+              <Label htmlFor="discount-pct" className="sr-only">
+                Discount percent
+              </Label>
+              <Input
+                id="discount-pct"
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                value={discountPercent}
+                onChange={(event) => {
+                  const value = parseFloat(event.target.value);
+                  updateVendorNodeDiscount(
+                    node.id,
+                    Number.isNaN(value) ? 0 : value,
+                  );
+                }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Discount Amount
+              </CardTitle>
+              <BadgePercent className="h-3.5 w-3.5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <p className="text-xl font-bold">
+                {formatCurrency(discountAmount)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm border-primary/20 bg-primary/5">
+            <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                After Discount
+              </CardTitle>
+              <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <p className="text-xl font-bold">{formatCurrency(netTotal)}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="px-4 pb-6">
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-sm">License packages</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <VendorNodeLicenseTable vendorNodeName={node} />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   const pendingPackages = metrics.packageCount - metrics.packagesWithData;
   const hasPendingPackages = pendingPackages > 0;
-
   const childTypeLabel = getChildTypeForParent(node.type);
 
   const kpiCards = [
@@ -95,7 +198,7 @@ export function SummaryPanel() {
       icon: DollarSign,
     },
     {
-      title: "Exp. Quantity",
+      title: "New License Qty",
       value: formatNumber(metrics.expansionQuantity),
       icon: ShoppingCart,
     },
@@ -124,7 +227,7 @@ export function SummaryPanel() {
           <Badge variant="outline" className="mb-2">
             {nodeTypeLabel(node.type)}
           </Badge>
-          <h2 className="text-lg font-semibold">{node.name}</h2>
+          <h2 className="text-lg font-semibold">{displayName}</h2>
           <p className="text-xs text-muted-foreground">
             Roll-up for this {nodeTypeLabel(node.type).toLowerCase()} and all
             nested packages
@@ -138,14 +241,14 @@ export function SummaryPanel() {
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>No packages in scope</AlertTitle>
             <AlertDescription>
-              Expand the tree beneath this node and add packages to see CAPEX
-              roll-ups here.
+              Expand the tree and configure license packages on a vendor node
+              name to see CAPEX roll-ups here.
             </AlertDescription>
           </Alert>
         </div>
       ) : null}
 
-      {hasPendingPackages && node.type !== "package" ? (
+      {hasPendingPackages ? (
         <div className="px-4 pt-4">
           <Alert>
             <AlertCircle className="h-4 w-4" />
@@ -153,20 +256,8 @@ export function SummaryPanel() {
             <AlertDescription>
               {pendingPackages} of {metrics.packageCount} package
               {metrics.packageCount === 1 ? "" : "s"} still need CAPEX entry.
-              Click a package leaf in the tree to enter quantities.
-            </AlertDescription>
-          </Alert>
-        </div>
-      ) : null}
-
-      {node.type === "package" && !node.packageData ? (
-        <div className="p-4">
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>No CAPEX data yet</AlertTitle>
-            <AlertDescription>
-              Click this package in the tree or use &quot;Enter CAPEX data&quot;
-              from the row menu to add quantities and pricing.
+              Select a vendor node name and click a table row to enter
+              quantities.
             </AlertDescription>
           </Alert>
         </div>
@@ -188,80 +279,7 @@ export function SummaryPanel() {
         ))}
       </div>
 
-      {packageDetails ? (
-        <div className="px-4 pb-4">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-sm">Package detail</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="text-muted-foreground">
-                      License package
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {packageDetails.data.licensePackage}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-muted-foreground">Unit</TableCell>
-                    <TableCell className="font-medium">
-                      {packageDetails.data.unit || "—"}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-muted-foreground">
-                      Exp. quantity
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {formatNumber(packageDetails.data.expansionQty)}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-muted-foreground">
-                      Et. quantity
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {formatNumber(packageDetails.data.existingQty)}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-muted-foreground">
-                      C. traffic
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {formatNumber(packageDetails.data.currentTraffic)}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-muted-foreground">
-                      Unit price
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {formatCurrency(packageDetails.data.unitPrice)}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-muted-foreground">
-                      Total price
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {formatCurrency(packageDetails.computed.totalPrice)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-              <div className="mt-4">
-                <PurchaseMetricsDisplay metrics={packageDetails.computed} />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
-
-      {childRollups.length > 0 && node.type !== "package" ? (
+      {childRollups.length > 0 ? (
         <div className="px-4 pb-4">
           <Card className="shadow-sm">
             <CardHeader>
@@ -279,7 +297,7 @@ export function SummaryPanel() {
         </div>
       ) : null}
 
-      {metrics.packageCount > 0 && node.type !== "package" ? (
+      {metrics.packageCount > 0 ? (
         <div className="px-4 pb-6">
           <Card className="shadow-sm">
             <CardHeader>
@@ -306,7 +324,7 @@ function ChildRollupTable({
         <TableRow>
           <TableHead>Name</TableHead>
           <TableHead>Type</TableHead>
-          <TableHead className="text-right">Exp. qty</TableHead>
+          <TableHead className="text-right">New License Qty</TableHead>
           <TableHead className="text-right">Total price</TableHead>
           <TableHead className="text-right">Packages</TableHead>
         </TableRow>
@@ -343,11 +361,13 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
   const node = findNode(tree, treeNodeId);
   if (!node) return null;
 
-  const packages = collectPackageNodes(node).map((pkg) => {
+  const packages = collectLicensePackages(node).map((pkg) => {
     if (!pkg.packageData) {
       return {
         id: pkg.id,
         name: pkg.name,
+        licensePackage: "—",
+        yearName: pkg.yearName,
         expansion: 0,
         total: 0,
         currentUtil: 0,
@@ -359,6 +379,8 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
     return {
       id: pkg.id,
       name: pkg.name,
+      licensePackage: pkg.packageData.licensePackage,
+      yearName: pkg.yearName,
       expansion: metrics.expansionQty,
       total: metrics.totalPrice,
       currentUtil: metrics.currentUtilization,
@@ -379,9 +401,11 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead>License Package</TableHead>
           <TableHead>Package</TableHead>
+          <TableHead>Year</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead className="text-right">Exp. qty</TableHead>
+          <TableHead className="text-right">New License Qty</TableHead>
           <TableHead className="text-right">C. util</TableHead>
           <TableHead className="text-right">Exp. util</TableHead>
           <TableHead className="text-right">Total price</TableHead>
@@ -390,7 +414,9 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
       <TableBody>
         {packages.map((row) => (
           <TableRow key={row.id}>
-            <TableCell className="font-medium">{row.name}</TableCell>
+            <TableCell className="font-medium">{row.licensePackage}</TableCell>
+            <TableCell>{row.name}</TableCell>
+            <TableCell>{row.yearName || "—"}</TableCell>
             <TableCell>
               <Badge variant={row.hasData ? "secondary" : "outline"}>
                 {row.hasData ? "Complete" : "Pending"}

@@ -44,7 +44,7 @@ export default function DashboardPage() {
       icon: DollarSign,
     },
     {
-      title: "Exp. Quantity",
+      title: "New License Qty",
       value: formatNumber(stats.totalExpansionQty),
       subtitle: "Expansion qty across portfolio",
       icon: ShoppingCart,
@@ -160,7 +160,7 @@ export default function DashboardPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Country</TableHead>
-                    <TableHead className="text-right">Exp. qty</TableHead>
+                    <TableHead className="text-right">New License Qty</TableHead>
                     <TableHead className="text-right">Total price</TableHead>
                     <TableHead className="text-right">Packages</TableHead>
                   </TableRow>

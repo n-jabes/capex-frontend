@@ -18,15 +18,23 @@ import {
   relationshipsAreEmpty,
   withDefaultRelationshipsIfEmpty,
 } from "@/lib/relationship-utils";
-import type { AppSettings, CapexTreeNode, PackagePurchaseData, SelectedNode } from "@/types/capex";
+import type {
+  AppSettings,
+  CapexTreeNode,
+  LicenseYear,
+  PackagePurchaseData,
+  SelectedNode,
+} from "@/types/capex";
 import {
   addChildToNode,
   createInitialTree,
   deleteNodeFromTree,
   generateId,
+  migrateLicenseYearsTree,
   migrateSelectedNodeType,
   migrateTreeHierarchy,
   treeNeedsHierarchyMigration,
+  treeNeedsLicenseYearsMigration,
   updateNodeInTree,
 } from "@/lib/tree-utils";
 
@@ -46,6 +54,19 @@ interface CapexContextValue {
   addCountry: (countryName: string) => void;
   updatePackageData: (nodeId: string, data: PackagePurchaseData) => void;
   addChildren: (parentId: string, children: CapexTreeNode[]) => void;
+  updateVendorNodeLicenseYears: (
+    vendorNodeNameId: string,
+    licenseYears: LicenseYear[],
+  ) => void;
+  updateLicensePackageData: (
+    vendorNodeNameId: string,
+    packageInstanceId: string,
+    data: PackagePurchaseData,
+  ) => void;
+  updateVendorNodeDiscount: (
+    vendorNodeNameId: string,
+    discountPercent: number,
+  ) => void;
 }
 
 const CapexContext = createContext<CapexContextValue | null>(null);
@@ -92,6 +113,17 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     });
   }, [treeHydrated, tree, setTree, setSelectedNode]);
 
+  useEffect(() => {
+    if (!treeHydrated) return;
+    if (!treeNeedsLicenseYearsMigration(tree)) return;
+    setTree(migrateLicenseYearsTree(tree));
+    setSelectedNode((prev) => {
+      if (!prev) return prev;
+      if (prev.type === "package") return null;
+      return prev;
+    });
+  }, [treeHydrated, tree, setTree, setSelectedNode]);
+
   const addChild = useCallback(
     (parentId: string, child: CapexTreeNode) => {
       setTree((prev) => addChildToNode(prev, parentId, child));
@@ -102,7 +134,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const renameNode = useCallback(
     (id: string, name: string) => {
       setTree((prev) =>
-        updateNodeInTree(prev, id, (node) => ({ ...node, name })),
+        updateNodeInTree(prev, id, (node) => {
+          if (node.type === "vendor") {
+            return { ...node, siteName: name };
+          }
+          return { ...node, name };
+        }),
       );
       setSelectedNode((prev) => (prev?.id === id ? { ...prev, name } : prev));
     },
@@ -160,6 +197,55 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     [setTree],
   );
 
+  const updateVendorNodeLicenseYears = useCallback(
+    (vendorNodeNameId: string, licenseYears: LicenseYear[]) => {
+      setTree((prev) =>
+        updateNodeInTree(prev, vendorNodeNameId, (node) => ({
+          ...node,
+          licenseYears,
+          children: node.children.filter((child) => child.type !== "package"),
+        })),
+      );
+    },
+    [setTree],
+  );
+
+  const updateLicensePackageData = useCallback(
+    (
+      vendorNodeNameId: string,
+      packageInstanceId: string,
+      data: PackagePurchaseData,
+    ) => {
+      setTree((prev) =>
+        updateNodeInTree(prev, vendorNodeNameId, (node) => ({
+          ...node,
+          licenseYears: (node.licenseYears ?? []).map((year) => ({
+            ...year,
+            packages: year.packages.map((pkg) =>
+              pkg.id === packageInstanceId
+                ? { ...pkg, packageData: data }
+                : pkg,
+            ),
+          })),
+        })),
+      );
+    },
+    [setTree],
+  );
+
+  const updateVendorNodeDiscount = useCallback(
+    (vendorNodeNameId: string, discountPercent: number) => {
+      const clamped = Math.min(100, Math.max(0, discountPercent));
+      setTree((prev) =>
+        updateNodeInTree(prev, vendorNodeNameId, (node) => ({
+          ...node,
+          discountPercent: clamped,
+        })),
+      );
+    },
+    [setTree],
+  );
+
   const value = useMemo(
     () => ({
       tree,
@@ -174,6 +260,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       addCountry,
       updatePackageData,
       addChildren,
+      updateVendorNodeLicenseYears,
+      updateLicensePackageData,
+      updateVendorNodeDiscount,
     }),
     [
       tree,
@@ -188,6 +277,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       addCountry,
       updatePackageData,
       addChildren,
+      updateVendorNodeLicenseYears,
+      updateLicensePackageData,
+      updateVendorNodeDiscount,
     ],
   );
 

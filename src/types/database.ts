@@ -95,6 +95,7 @@ export interface PackagePurchase {
   existingQty: number;
   currentTraffic: number;
   unitPrice: number;
+  multiplier: number;
   createdAt: string;
   updatedAt: string;
 }

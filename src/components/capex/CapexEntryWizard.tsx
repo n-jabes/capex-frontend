@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -42,7 +43,7 @@ interface CapexEntryWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   deliveryNode: CapexTreeNode;
-  onComplete: (rootNode: CapexTreeNode, packageNodes: CapexTreeNode[]) => void;
+  onComplete: (rootNode: CapexTreeNode) => void;
 }
 
 export function CapexEntryWizard({
@@ -56,6 +57,7 @@ export function CapexEntryWizard({
   const [domainId, setDomainId] = useState("");
   const [nodeId, setNodeId] = useState("");
   const [vendorId, setVendorId] = useState("");
+  const [siteName, setSiteName] = useState("");
   const [vendorNodeNameId, setVendorNodeNameId] = useState("");
   const [selectedPackageIds, setSelectedPackageIds] = useState<string[]>([]);
 
@@ -178,6 +180,7 @@ export function CapexEntryWizard({
     setDomainId("");
     setNodeId("");
     setVendorId("");
+    setSiteName("");
     setVendorNodeNameId("");
     setSelectedPackageIds([]);
   };
@@ -223,7 +226,7 @@ export function CapexEntryWizard({
       case "node":
         return !!nodeId;
       case "vendor":
-        return !!vendorId;
+        return !!vendorId && !!siteName.trim();
       case "vendorNodeName":
         return !!vendorNodeNameId;
       case "packages":
@@ -252,7 +255,7 @@ export function CapexEntryWizard({
     const vnn = vnnOptions.find((item) => item.id === vendorNodeNameId);
     if (!domain || !node || !vendor || !vnn) return;
 
-    const packageNodes = selectedPackageIds.flatMap((id) => {
+    const yearPackages = selectedPackageIds.flatMap((id) => {
       const catalogPkg = settings.catalogs.packages.find(
         (item) => item.id === id,
       );
@@ -260,10 +263,8 @@ export function CapexEntryWizard({
       return [
         {
           id: generateId(),
-          type: "package" as const,
-          name: catalogPkg.name,
           catalogId: catalogPkg.id,
-          children: [],
+          name: catalogPkg.name,
         },
       ];
     });
@@ -273,13 +274,22 @@ export function CapexEntryWizard({
       type: "vendorNodeName",
       name: vnn.name,
       catalogId: vnn.id,
-      children: packageNodes,
+      discountPercent: 0,
+      licenseYears: [
+        {
+          id: `year-${generateId()}`,
+          name: "Year One",
+          packages: yearPackages,
+        },
+      ],
+      children: [],
     };
 
     const vendorTreeNode: CapexTreeNode = {
       id: generateId(),
       type: "vendor",
       name: vendor.name,
+      siteName: siteName.trim() || vendor.name,
       catalogId: vendor.id,
       children: [vendorNodeNameTreeNode],
     };
@@ -300,7 +310,7 @@ export function CapexEntryWizard({
       children: [nodeTreeNode],
     };
 
-    onComplete(domainTreeNode, packageNodes);
+    onComplete(domainTreeNode);
     handleClose(false);
   };
 
@@ -331,38 +341,59 @@ export function CapexEntryWizard({
 
         <div className="space-y-4 py-2">
           {step !== "packages" ? (
-            <PresetStepSelect
-              label={stepTitle}
-              options={optionsForStep(step, {
-                domainOptions,
-                nodeOptions,
-                vendorOptions,
-                vnnOptions,
-              })}
-              value={valueForStep(step, {
-                domainId,
-                nodeId,
-                vendorId,
-                vendorNodeNameId,
-              })}
-              onChange={(value) => {
-                if (step === "domain") {
-                  setDomainId(value);
-                  setNodeId("");
-                  setVendorId("");
-                  setVendorNodeNameId("");
-                } else if (step === "node") {
-                  setNodeId(value);
-                  setVendorId("");
-                  setVendorNodeNameId("");
-                } else if (step === "vendor") {
-                  setVendorId(value);
-                  setVendorNodeNameId("");
-                } else if (step === "vendorNodeName") {
-                  setVendorNodeNameId(value);
-                }
-              }}
-            />
+            <>
+              <PresetStepSelect
+                label={step === "vendor" ? "Vendor" : stepTitle}
+                options={optionsForStep(step, {
+                  domainOptions,
+                  nodeOptions,
+                  vendorOptions,
+                  vnnOptions,
+                })}
+                value={valueForStep(step, {
+                  domainId,
+                  nodeId,
+                  vendorId,
+                  vendorNodeNameId,
+                })}
+                onChange={(value) => {
+                  if (step === "domain") {
+                    setDomainId(value);
+                    setNodeId("");
+                    setVendorId("");
+                    setSiteName("");
+                    setVendorNodeNameId("");
+                  } else if (step === "node") {
+                    setNodeId(value);
+                    setVendorId("");
+                    setSiteName("");
+                    setVendorNodeNameId("");
+                  } else if (step === "vendor") {
+                    setVendorId(value);
+                    setVendorNodeNameId("");
+                    const vendor = vendorOptions.find((item) => item.id === value);
+                    if (vendor && !siteName.trim()) {
+                      setSiteName(vendor.name);
+                    }
+                  } else if (step === "vendorNodeName") {
+                    setVendorNodeNameId(value);
+                  }
+                }}
+              />
+              {step === "vendor" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="wizard-site-name" required>
+                    Site name
+                  </Label>
+                  <Input
+                    id="wizard-site-name"
+                    value={siteName}
+                    onChange={(event) => setSiteName(event.target.value)}
+                    placeholder="e.g. Kigali Hub"
+                  />
+                </div>
+              ) : null}
+            </>
           ) : (
             <PackageSelectionTable
               rows={packageRows}

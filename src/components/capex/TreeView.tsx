@@ -192,7 +192,7 @@ function TreeViewContent() {
             if (!open) setWizardDelivery(null);
           }}
           deliveryNode={wizardDelivery}
-          onComplete={(rootNode, packageNodes) => {
+          onComplete={(rootNode) => {
             addChild(wizardDelivery.id, rootNode);
             setSelectedNode({
               id: rootNode.id,
@@ -200,13 +200,6 @@ function TreeViewContent() {
               name: rootNode.name,
             });
             setWizardDelivery(null);
-            if (packageNodes[0]) {
-              setSelectedNode({
-                id: packageNodes[0].id,
-                type: packageNodes[0].type,
-                name: packageNodes[0].name,
-              });
-            }
           }}
         />
       )}

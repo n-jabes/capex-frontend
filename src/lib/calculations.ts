@@ -1,4 +1,18 @@
-import type { PackagePurchaseData } from "@/types/capex";
+import type { PackagePurchaseData, SummaryMetrics } from "@/types/capex";
+
+export function normalizeMultiplier(value: number | undefined): number {
+  if (value === undefined || Number.isNaN(value) || value < 0) return 1;
+  return value;
+}
+
+export function normalizePackagePurchaseData(
+  data: PackagePurchaseData,
+): PackagePurchaseData {
+  return {
+    ...data,
+    multiplier: normalizeMultiplier(data.multiplier),
+  };
+}
 
 export function calcCurrentUtilization(
   currentTraffic: number,
@@ -21,8 +35,21 @@ export function calcExpansionUtilization(
 export function calcPackageTotalPrice(
   expansionQty: number,
   unitPrice: number,
+  multiplier = 1,
 ): number {
-  return expansionQty * unitPrice;
+  return expansionQty * unitPrice * normalizeMultiplier(multiplier);
+}
+
+export function calcDiscountAmount(
+  subtotal: number,
+  discountPercent: number,
+): number {
+  const pct = Math.min(100, Math.max(0, discountPercent || 0));
+  return (subtotal * pct) / 100;
+}
+
+export function calcNetTotal(subtotal: number, discountPercent: number): number {
+  return Math.max(0, subtotal - calcDiscountAmount(subtotal, discountPercent));
 }
 
 export interface ComputedPackageMetrics {
@@ -35,6 +62,7 @@ export interface ComputedPackageMetrics {
 export function computePackageMetrics(
   data: PackagePurchaseData,
 ): ComputedPackageMetrics {
+  const multiplier = normalizeMultiplier(data.multiplier);
   return {
     expansionQty: data.expansionQty,
     currentUtilization: calcCurrentUtilization(
@@ -46,6 +74,27 @@ export function computePackageMetrics(
       data.existingQty,
       data.expansionQty,
     ),
-    totalPrice: calcPackageTotalPrice(data.expansionQty, data.unitPrice),
+    totalPrice: calcPackageTotalPrice(
+      data.expansionQty,
+      data.unitPrice,
+      multiplier,
+    ),
+  };
+}
+
+export function applyDiscountToMetrics(
+  metrics: SummaryMetrics,
+  discountPercent: number,
+): SummaryMetrics {
+  const subtotal = metrics.totalCost;
+  const discountAmount = calcDiscountAmount(subtotal, discountPercent);
+  const netTotal = calcNetTotal(subtotal, discountPercent);
+  return {
+    ...metrics,
+    subtotal,
+    discountPercent,
+    discountAmount,
+    netTotal,
+    totalCost: netTotal,
   };
 }
