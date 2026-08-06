@@ -34,7 +34,6 @@ import {
   toSelectedNode,
 } from "@/lib/tree-utils";
 import { AddChildDialog } from "@/components/capex/AddChildDialog";
-import { ConfigureLicensePackagesDialog } from "@/components/capex/ConfigureLicensePackagesDialog";
 import { CapexEntryWizard } from "@/components/capex/CapexEntryWizard";
 import { RenameDialog } from "@/components/capex/RenameDialog";
 import { useTreeExpansion } from "@/components/capex/TreeExpansionContext";
@@ -71,7 +70,6 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
   const { isExpanded, setExpanded, collapseNodeToDirectChildren } =
     useTreeExpansion();
   const [addOpen, setAddOpen] = useState(false);
-  const [configureOpen, setConfigureOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
 
@@ -81,7 +79,6 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
   const isSelected = selectedNode?.id === node.id;
   const childType = getChildTypeForParent(node.type);
   const canAddChild = childType !== null;
-  const canConfigurePackages = node.type === "vendorNodeName";
   const canRename = node.type !== "package";
   const canDelete = !["country", "projectName"].includes(node.type);
   const hasChildren = node.children.length > 0;
@@ -150,7 +147,7 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
             </span>
             <span className="text-base leading-none">{typeIcons[node.type]}</span>
             <span className="truncate font-medium">{displayName}</span>
-            {canConfigurePackages && packageCount > 0 ? (
+            {node.type === "vendorNodeName" && packageCount > 0 ? (
               <Badge
                 variant="secondary"
                 className="ml-1 hidden h-5 px-1.5 text-[10px] sm:inline-flex"
@@ -197,12 +194,6 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
                   Add {nodeTypeLabel(childType!)}
                 </DropdownMenuItem>
               )}
-              {canConfigurePackages && (
-                <DropdownMenuItem onClick={() => setConfigureOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Configure license packages
-                </DropdownMenuItem>
-              )}
               {canRename && (
                 <DropdownMenuItem onClick={() => setRenameOpen(true)}>
                   <Pencil className="mr-2 h-4 w-4" />
@@ -242,14 +233,6 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
           onOpenChange={setAddOpen}
           parentNode={node}
           onAdded={handleAddChild}
-        />
-      )}
-
-      {canConfigurePackages && (
-        <ConfigureLicensePackagesDialog
-          open={configureOpen}
-          onOpenChange={setConfigureOpen}
-          vendorNodeName={node}
         />
       )}
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { LicensePackageEntryDialog } from "@/components/capex/LicensePackageEntryDialog";
 import { useCapex, generateId } from "@/context/CapexContext";
+import { getPackageVendorNodeNameIds } from "@/lib/catalog-utils";
 import {
   computePackageMetrics,
   normalizeMultiplier,
@@ -32,86 +33,81 @@ import type {
   CapexTreeNode,
   LicensePackageInstance,
   LicenseYear,
+  PackageCatalogItem,
 } from "@/types/capex";
-
-export interface LicenseTableRow {
-  instance: LicensePackageInstance;
-  yearId: string;
-  yearName: string;
-}
 
 interface VendorNodeLicenseTableProps {
   vendorNodeName: CapexTreeNode;
+  /** "all" for stats-only aggregate; table editing requires a concrete year */
+  yearFilter: string;
+  onYearFilterChange: (yearId: string) => void;
 }
 
 export function VendorNodeLicenseTable({
   vendorNodeName,
+  yearFilter,
+  onYearFilterChange,
 }: VendorNodeLicenseTableProps) {
-  const {
-    updateVendorNodeLicenseYears,
-    removeLicensePackage,
-  } = useCapex();
-
-  const years = vendorNodeName.licenseYears ?? [];
-  const [activeYearId, setActiveYearId] = useState(years[0]?.id ?? "");
+  const { settings, updateVendorNodeLicenseYears } = useCapex();
   const [query, setQuery] = useState("");
   const [selectedOnly, setSelectedOnly] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [editing, setEditing] = useState<LicenseTableRow | null>(null);
+  const [editing, setEditing] = useState<LicensePackageInstance | null>(null);
   const [newYearName, setNewYearName] = useState("");
   const [showAddYear, setShowAddYear] = useState(false);
 
+  const years = vendorNodeName.licenseYears ?? [];
+  const isAllYears = yearFilter === "all";
+  const activeYear = years.find((year) => year.id === yearFilter);
+
   useEffect(() => {
-    if (!years.length) {
-      setActiveYearId("");
-      return;
+    if (isAllYears) return;
+    if (!years.length) return;
+    if (!years.some((year) => year.id === yearFilter)) {
+      onYearFilterChange(years[0].id);
     }
-    if (!years.some((year) => year.id === activeYearId)) {
-      setActiveYearId(years[0].id);
+  }, [years, yearFilter, isAllYears, onYearFilterChange]);
+
+  const catalogPackages = useMemo(() => {
+    const vendorNodeNameId = vendorNodeName.catalogId;
+    const packages = settings.catalogs.packages;
+    if (!vendorNodeNameId) return packages;
+    const mapped = packages.filter((item) =>
+      getPackageVendorNodeNameIds(item).includes(vendorNodeNameId),
+    );
+    return mapped.length ? mapped : packages;
+  }, [settings.catalogs.packages, vendorNodeName.catalogId]);
+
+  const selectedByCatalogId = useMemo(() => {
+    const map = new Map<string, LicensePackageInstance>();
+    if (!activeYear) return map;
+    for (const pkg of activeYear.packages) {
+      map.set(pkg.catalogId, pkg);
     }
-  }, [years, activeYearId]);
-
-  const activeYear = years.find((year) => year.id === activeYearId);
-
-  const rows: LicenseTableRow[] = useMemo(() => {
-    if (!activeYear) return [];
-    return activeYear.packages.map((instance) => ({
-      instance,
-      yearId: activeYear.id,
-      yearName: activeYear.name,
-    }));
+    return map;
   }, [activeYear]);
 
-  const filtered = useMemo(() => {
-    let result = rows;
-    if (selectedOnly) {
-      result = result.filter((row) => selectedIds.includes(row.instance.id));
+  const filteredCatalog = useMemo(() => {
+    let result = catalogPackages;
+    if (selectedOnly && !isAllYears) {
+      result = result.filter((item) => selectedByCatalogId.has(item.id));
     }
     const q = query.trim().toLowerCase();
     if (q) {
-      result = result.filter((row) => {
-        const license =
-          row.instance.packageData?.licensePackage ?? row.instance.name;
-        const unit = row.instance.packageData?.unit ?? "";
-        return (
-          license.toLowerCase().includes(q) ||
-          unit.toLowerCase().includes(q) ||
-          row.instance.name.toLowerCase().includes(q)
-        );
-      });
+      result = result.filter(
+        (item) =>
+          item.name.toLowerCase().includes(q) ||
+          item.licensePackage.toLowerCase().includes(q) ||
+          item.unit.toLowerCase().includes(q),
+      );
     }
     return result;
-  }, [rows, selectedOnly, selectedIds, query]);
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id],
-    );
-  };
+  }, [catalogPackages, selectedOnly, selectedByCatalogId, query, isAllYears]);
 
   const persistYears = (next: LicenseYear[]) => {
     updateVendorNodeLicenseYears(vendorNodeName.id, next);
   };
+
+  const ensureYears = (list: LicenseYear[]) => list;
 
   const handleAddYear = () => {
     const name = newYearName.trim();
@@ -125,45 +121,106 @@ export function VendorNodeLicenseTable({
       packages: [],
     };
     persistYears([...years, year]);
-    setActiveYearId(year.id);
+    onYearFilterChange(year.id);
     setNewYearName("");
     setShowAddYear(false);
   };
 
-  const handleRemovePackage = (packageInstanceId: string) => {
-    removeLicensePackage(vendorNodeName.id, packageInstanceId);
-    setSelectedIds((prev) => prev.filter((id) => id !== packageInstanceId));
-    if (editing?.instance.id === packageInstanceId) setEditing(null);
+  const toggleCatalogPackage = (catalog: PackageCatalogItem) => {
+    if (isAllYears || !activeYear) return;
+
+    const exists = selectedByCatalogId.get(catalog.id);
+    if (exists) {
+      persistYears(
+        years.map((year) =>
+          year.id === activeYear.id
+            ? {
+                ...year,
+                packages: year.packages.filter(
+                  (pkg) => pkg.catalogId !== catalog.id,
+                ),
+              }
+            : year,
+        ),
+      );
+      if (editing?.catalogId === catalog.id) setEditing(null);
+      return;
+    }
+
+    const instance: LicensePackageInstance = {
+      id: generateId(),
+      catalogId: catalog.id,
+      name: catalog.name,
+      packageData: {
+        licensePackage: catalog.licensePackage,
+        unit: catalog.unit,
+        expansionQty: 0,
+        existingQty: 0,
+        currentTraffic: 0,
+        unitPrice: catalog.unitPrice,
+        multiplier: 1,
+      },
+    };
+
+    persistYears(
+      ensureYears(
+        years.map((year) =>
+          year.id === activeYear.id
+            ? { ...year, packages: [...year.packages, instance] }
+            : year,
+        ),
+      ),
+    );
+    setEditing(instance);
+  };
+
+  const openEditor = (catalog: PackageCatalogItem) => {
+    if (isAllYears || !activeYear) return;
+    const existing = selectedByCatalogId.get(catalog.id);
+    if (existing) {
+      setEditing(existing);
+      return;
+    }
+    toggleCatalogPackage(catalog);
   };
 
   const selectedRowClass =
     "bg-emerald-50/80 dark:bg-emerald-950/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/40";
+
+  const selectedCount = activeYear?.packages.length ?? 0;
+  const yearLabel = isAllYears
+    ? "All years"
+    : (activeYear?.name ?? "Select a year");
 
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Showing year
+            Year scope
           </p>
-          <h4 className="text-base font-semibold">
-            {activeYear?.name ?? "No year selected"}
-          </h4>
+          <h4 className="text-base font-semibold">{yearLabel}</h4>
+          <p className="text-xs text-muted-foreground">
+            {isAllYears
+              ? "Stats include all years. Pick a year below to select and edit packages."
+              : "Selections and CAPEX values apply only to this year."}
+          </p>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="space-y-1">
             <Label className="text-xs">Year</Label>
             <Select
-              value={activeYearId}
-              onValueChange={(value) => setActiveYearId(value ?? "")}
+              value={yearFilter}
+              onValueChange={(value) => onYearFilterChange(value ?? "all")}
             >
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Select year...">
-                  {activeYear?.name ?? "Select year..."}
+                  {yearLabel}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All years</SelectItem>
                 {years.map((year) => (
                   <SelectItem key={year.id} value={year.id}>
                     {year.name}
@@ -225,155 +282,159 @@ export function VendorNodeLicenseTable({
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter license packages..."
+            placeholder="Search packages..."
             className="pl-9"
           />
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded border"
-            checked={selectedOnly}
-            onChange={(event) => setSelectedOnly(event.target.checked)}
-          />
-          Selected only ({selectedIds.length})
-        </label>
+        {!isAllYears ? (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border"
+              checked={selectedOnly}
+              onChange={(event) => setSelectedOnly(event.target.checked)}
+            />
+            Selected only ({selectedCount})
+          </label>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          {isAllYears
+            ? `${catalogPackages.length} packages available`
+            : `${selectedCount} selected · ${catalogPackages.length} available`}
+        </p>
       </div>
 
-      {!activeYear ? (
+      {years.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">
-          Add a year (e.g. 2026) to start configuring license packages.
-        </p>
-      ) : rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">
-          No packages for {activeYear.name}. Use &quot;Configure license
-          packages&quot; on this vendor node name to select packages for this
-          year.
+          Add a year (e.g. 2026) to start selecting license packages.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <Table className="min-w-[980px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10"> </TableHead>
-                <TableHead className="sticky left-0 z-10 min-w-[180px] bg-card">
-                  License Package
-                </TableHead>
-                <TableHead className="min-w-[80px]">Unit</TableHead>
-                <TableHead className="text-right">New License Qty</TableHead>
-                <TableHead className="text-right">Ex License Qty</TableHead>
-                <TableHead className="text-right">C. traffic</TableHead>
-                <TableHead className="text-right">C. util</TableHead>
-                <TableHead className="text-right">Exp. util</TableHead>
-                <TableHead className="text-right">Unit Price</TableHead>
-                <TableHead className="text-right">Multiplier</TableHead>
-                <TableHead className="text-right">Total Price</TableHead>
-                <TableHead className="w-12"> </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((row) => {
-                const data = row.instance.packageData;
-                const metrics = data ? computePackageMetrics(data) : null;
-                const selected = selectedIds.includes(row.instance.id);
-                const licenseName =
-                  data?.licensePackage?.trim() || row.instance.name;
+        <>
+          {isAllYears ? (
+            <p className="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+              Stats show all years. Pick a specific year above to select packages
+              and enter CAPEX values for that year.
+            </p>
+          ) : null}
+          <div className="overflow-x-auto rounded-md border">
+            <Table className="min-w-[980px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10"> </TableHead>
+                  <TableHead className="sticky left-0 z-10 min-w-[180px] bg-card">
+                    License Package
+                  </TableHead>
+                  <TableHead className="min-w-[80px]">Unit</TableHead>
+                  <TableHead className="text-right">New License Qty</TableHead>
+                  <TableHead className="text-right">Ex License Qty</TableHead>
+                  <TableHead className="text-right">C. traffic</TableHead>
+                  <TableHead className="text-right">C. util</TableHead>
+                  <TableHead className="text-right">Exp. util</TableHead>
+                  <TableHead className="text-right">Unit Price</TableHead>
+                  <TableHead className="text-right">Multiplier</TableHead>
+                  <TableHead className="text-right">Total Price</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredCatalog.map((catalog) => {
+                  const instance = selectedByCatalogId.get(catalog.id);
+                  const selected = !!instance;
+                  const data = instance?.packageData;
+                  const metrics = data ? computePackageMetrics(data) : null;
+                  const licenseName =
+                    data?.licensePackage?.trim() || catalog.licensePackage;
+                  const canEdit = !isAllYears && !!activeYear;
 
-                return (
-                  <TableRow
-                    key={row.instance.id}
-                    className={cn(
-                      "cursor-pointer",
-                      selected && selectedRowClass,
-                    )}
-                    onClick={() => setEditing(row)}
-                  >
-                    <TableCell
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleSelect(row.instance.id);
+                  return (
+                    <TableRow
+                      key={catalog.id}
+                      className={cn(
+                        canEdit && "cursor-pointer",
+                        !canEdit && "opacity-80",
+                        selected && selectedRowClass,
+                      )}
+                      onClick={() => {
+                        if (canEdit) openEditor(catalog);
                       }}
                     >
-                      <span
-                        className={cn(
-                          "inline-flex h-5 w-5 items-center justify-center rounded border",
-                          selected &&
-                            "border-emerald-600 bg-emerald-600 text-white",
-                        )}
-                      >
-                        {selected ? "✓" : null}
-                      </span>
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        "sticky left-0 z-10 font-medium",
-                        selected ? "bg-emerald-50/80 dark:bg-emerald-950/30" : "bg-card",
-                      )}
-                    >
-                      {licenseName}
-                    </TableCell>
-                    <TableCell>{data?.unit || "—"}</TableCell>
-                    <TableCell className="text-right">
-                      {data ? formatNumber(data.expansionQty) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {data ? formatNumber(data.existingQty) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {data ? formatNumber(data.currentTraffic) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {metrics
-                        ? formatPercent(metrics.currentUtilization)
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {metrics
-                        ? formatPercent(metrics.expansionUtilization)
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {data ? formatCurrency(data.unitPrice) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {data
-                        ? formatNumber(normalizeMultiplier(data.multiplier))
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {metrics ? formatCurrency(metrics.totalPrice) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="Remove package"
+                      <TableCell
                         onClick={(event) => {
                           event.stopPropagation();
-                          handleRemovePackage(row.instance.id);
+                          if (canEdit) toggleCatalogPackage(catalog);
                         }}
                       >
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                        <span
+                          className={cn(
+                            "inline-flex h-5 w-5 items-center justify-center rounded border",
+                            selected &&
+                              "border-emerald-600 bg-emerald-600 text-white",
+                            !canEdit && "opacity-50",
+                          )}
+                        >
+                          {selected ? "✓" : null}
+                        </span>
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "sticky left-0 z-10 font-medium",
+                          selected
+                            ? "bg-emerald-50/80 dark:bg-emerald-950/30"
+                            : "bg-card",
+                        )}
+                      >
+                        {licenseName}
+                      </TableCell>
+                      <TableCell>{data?.unit || catalog.unit || "—"}</TableCell>
+                      <TableCell className="text-right">
+                        {data ? formatNumber(data.expansionQty) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {data ? formatNumber(data.existingQty) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {data ? formatNumber(data.currentTraffic) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {metrics
+                          ? formatPercent(metrics.currentUtilization)
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {metrics
+                          ? formatPercent(metrics.expansionUtilization)
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {data
+                          ? formatCurrency(data.unitPrice)
+                          : formatCurrency(catalog.unitPrice)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {data
+                          ? formatNumber(normalizeMultiplier(data.multiplier))
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {metrics ? formatCurrency(metrics.totalPrice) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
 
-      {editing ? (
+      {editing && activeYear ? (
         <LicensePackageEntryDialog
           open={!!editing}
           onOpenChange={(open) => {
             if (!open) setEditing(null);
           }}
           vendorNodeNameId={vendorNodeName.id}
-          instance={editing.instance}
-          yearName={editing.yearName}
+          instance={editing}
+          yearName={activeYear.name}
         />
       ) : null}
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DollarSign,
   Percent,
@@ -25,6 +25,7 @@ import { useCapex } from "@/context/CapexContext";
 import {
   collectLicensePackages,
   computeChildRollups,
+  computeVendorNodeMetricsForYear,
   displayVendorNodeName,
   findNode,
   findNodePath,
@@ -40,6 +41,7 @@ import { VendorNodeLicenseTable } from "@/components/capex/VendorNodeLicenseTabl
 export function SummaryPanel() {
   const { tree, selectedNode, isHydrated, updateVendorNodeDiscount } =
     useCapex();
+  const [vnnYearFilter, setVnnYearFilter] = useState<string>("all");
 
   const summary = useMemo(() => {
     if (!selectedNode) return null;
@@ -53,6 +55,10 @@ export function SummaryPanel() {
       childRollups: computeChildRollups(node),
     };
   }, [tree, selectedNode]);
+
+  useEffect(() => {
+    setVnnYearFilter("all");
+  }, [selectedNode?.id]);
 
   if (!isHydrated) {
     return (
@@ -81,10 +87,12 @@ export function SummaryPanel() {
     node.type === "vendor" ? displayVendorNodeName(node) : node.name;
 
   if (isVnn) {
-    const subtotal = metrics.subtotal ?? metrics.totalCost;
-    const discountPercent = metrics.discountPercent ?? node.discountPercent ?? 0;
-    const discountAmount = metrics.discountAmount ?? 0;
-    const netTotal = metrics.netTotal ?? metrics.totalCost;
+    const yearMetrics = computeVendorNodeMetricsForYear(node, vnnYearFilter);
+    const subtotal = yearMetrics.subtotal ?? yearMetrics.totalCost;
+    const discountPercent =
+      yearMetrics.discountPercent ?? node.discountPercent ?? 0;
+    const discountAmount = yearMetrics.discountAmount ?? 0;
+    const netTotal = yearMetrics.netTotal ?? yearMetrics.totalCost;
 
     return (
       <div className="flex h-full flex-col overflow-auto">
@@ -96,7 +104,8 @@ export function SummaryPanel() {
             </Badge>
             <h2 className="text-lg font-semibold">{displayName}</h2>
             <p className="text-xs text-muted-foreground">
-              License packages by year — select a row to enter CAPEX quantities.
+              Select packages for a year and enter CAPEX quantities. Stats follow
+              the year filter (default: all years).
             </p>
           </div>
         </div>
@@ -176,7 +185,11 @@ export function SummaryPanel() {
               <CardTitle className="text-sm">License packages</CardTitle>
             </CardHeader>
             <CardContent>
-              <VendorNodeLicenseTable vendorNodeName={node} />
+              <VendorNodeLicenseTable
+                vendorNodeName={node}
+                yearFilter={vnnYearFilter}
+                onYearFilterChange={setVnnYearFilter}
+              />
             </CardContent>
           </Card>
         </div>

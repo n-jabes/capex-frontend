@@ -229,10 +229,53 @@ export function computeSummaryForNode(node: CapexTreeNode): SummaryMetrics {
   };
 }
 
+export function computeVendorNodeMetricsForYear(
+  node: CapexTreeNode,
+  yearId: string | "all",
+): SummaryMetrics {
+  if (node.type !== "vendorNodeName") {
+    return computeSummaryForNode(node);
+  }
+
+  const years = node.licenseYears ?? [];
+  const packages =
+    yearId === "all"
+      ? years.flatMap((year) => year.packages)
+      : (years.find((year) => year.id === yearId)?.packages ?? []);
+
+  const withData = packages.filter((pkg) => pkg.packageData);
+  let totalCost = 0;
+  let expansionQuantity = 0;
+  let currentUtilSum = 0;
+  let postExpSum = 0;
+
+  for (const pkg of withData) {
+    const metrics = computePackageMetrics(pkg.packageData!);
+    totalCost += metrics.totalPrice;
+    expansionQuantity += metrics.expansionQty;
+    currentUtilSum += metrics.currentUtilization;
+    postExpSum += metrics.expansionUtilization;
+  }
+
+  const base: SummaryMetrics = {
+    totalCost,
+    expansionQuantity,
+    avgCurrentUtilization: withData.length
+      ? currentUtilSum / withData.length
+      : 0,
+    avgPostExpansionUtilization: withData.length
+      ? postExpSum / withData.length
+      : 0,
+    packageCount: packages.length,
+    packagesWithData: withData.length,
+  };
+
+  return applyDiscountToMetrics(base, node.discountPercent ?? 0);
+}
+
 export function displayVendorNodeName(node: CapexTreeNode): string {
   if (node.type !== "vendor") return node.name;
   const site = node.siteName?.trim();
-  if (site && site !== node.name) return `${site} (${node.name})`;
   if (site) return `${site} (${node.name})`;
   return node.name;
 }
