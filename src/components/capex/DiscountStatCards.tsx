@@ -24,27 +24,29 @@ export function DiscountStatCards({
   inputId = "discount-pct",
 }: DiscountStatCardsProps) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
       <Card className="shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
-          <CardTitle className="text-xs font-medium text-muted-foreground">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 pb-0 pt-2">
+          <CardTitle className="text-[11px] font-medium text-muted-foreground">
             Total Price
           </CardTitle>
-          <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+          <DollarSign className="h-3 w-3 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="px-4 pb-3">
-          <p className="text-xl font-bold">{formatCurrency(subtotal)}</p>
+        <CardContent className="px-3 pb-2 pt-0.5">
+          <p className="text-base font-bold leading-tight">
+            {formatCurrency(subtotal)}
+          </p>
         </CardContent>
       </Card>
 
       <Card className="shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
-          <CardTitle className="text-xs font-medium text-muted-foreground">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 pb-0 pt-2">
+          <CardTitle className="text-[11px] font-medium text-muted-foreground">
             Discount %
           </CardTitle>
-          <Percent className="h-3.5 w-3.5 text-muted-foreground" />
+          <Percent className="h-3 w-3 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="space-y-2 px-4 pb-3">
+        <CardContent className="px-3 pb-2 pt-0.5">
           <Label htmlFor={inputId} className="sr-only">
             Discount percent
           </Label>
@@ -54,6 +56,7 @@ export function DiscountStatCards({
             min={0}
             max={100}
             step="0.1"
+            className="h-8"
             value={discountPercent}
             onChange={(event) => {
               const value = parseFloat(event.target.value);
@@ -64,26 +67,30 @@ export function DiscountStatCards({
       </Card>
 
       <Card className="shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
-          <CardTitle className="text-xs font-medium text-muted-foreground">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 pb-0 pt-2">
+          <CardTitle className="text-[11px] font-medium text-muted-foreground">
             Discount Amount
           </CardTitle>
-          <BadgePercent className="h-3.5 w-3.5 text-muted-foreground" />
+          <BadgePercent className="h-3 w-3 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="px-4 pb-3">
-          <p className="text-xl font-bold">{formatCurrency(discountAmount)}</p>
+        <CardContent className="px-3 pb-2 pt-0.5">
+          <p className="text-base font-bold leading-tight">
+            {formatCurrency(discountAmount)}
+          </p>
         </CardContent>
       </Card>
 
       <Card className="shadow-sm border-primary/20 bg-primary/5">
-        <CardHeader className="flex flex-row items-center justify-between px-4 pb-1 pt-3">
-          <CardTitle className="text-xs font-medium text-muted-foreground">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 pb-0 pt-2">
+          <CardTitle className="text-[11px] font-medium text-muted-foreground">
             After Discount
           </CardTitle>
-          <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+          <DollarSign className="h-3 w-3 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="px-4 pb-3">
-          <p className="text-xl font-bold">{formatCurrency(netTotal)}</p>
+        <CardContent className="px-3 pb-2 pt-0.5">
+          <p className="text-base font-bold leading-tight">
+            {formatCurrency(netTotal)}
+          </p>
         </CardContent>
       </Card>
     </div>

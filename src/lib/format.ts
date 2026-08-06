@@ -15,16 +15,7 @@ export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-/** Green when post-purchase util improves (drops); red when it worsens. */
-export function expansionUtilToneClass(
-  expansionUtil: number,
-  currentUtil: number,
-): string {
-  if (expansionUtil < currentUtil) {
-    return "font-medium text-emerald-600 dark:text-emerald-400";
-  }
-  if (expansionUtil > currentUtil) {
-    return "font-medium text-red-600 dark:text-red-400";
-  }
-  return "";
+/** Red text when same-package C. util sum across sibling VNNs exceeds N+1 threshold. */
+export function currentUtilHotClass(isHot: boolean): string {
+  return isHot ? "font-medium text-red-600 dark:text-red-400" : "";
 }
