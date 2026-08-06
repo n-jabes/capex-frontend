@@ -74,7 +74,7 @@ export function VendorNodeLicenseTable({
   const [editing, setEditing] = useState<LicensePackageInstance | null>(null);
   const [newYearName, setNewYearName] = useState("");
   const [showAddYear, setShowAddYear] = useState(false);
-  const { isVisible, toggle, columns } = useColumnVisibility(
+  const { isVisible, setColumnVisible, columns } = useColumnVisibility(
     "capex-cols-vnn-packages",
     VNN_COLUMNS,
   );
@@ -329,7 +329,7 @@ export function VendorNodeLicenseTable({
         <ColumnVisibilityMenu
           columns={columns}
           isVisible={isVisible}
-          onToggle={toggle}
+          onSetVisible={setColumnVisible}
         />
       </div>
 

@@ -299,10 +299,15 @@ export function LicensePackageEntryDialog({
           </div>
 
           {trafficWarning ? (
-            <Alert className="border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-50">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <AlertTitle>Traffic capacity warning</AlertTitle>
-              <AlertDescription>{trafficWarning}</AlertDescription>
+            <Alert className="relative overflow-hidden border-2 border-amber-500 bg-amber-100 text-amber-950 shadow-md ring-2 ring-amber-400/60 dark:border-amber-500 dark:bg-amber-950/70 dark:text-amber-50">
+              <div className="pointer-events-none absolute inset-y-0 left-0 w-1.5 bg-amber-500" />
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              <AlertTitle className="text-base font-semibold">
+                Traffic capacity warning
+              </AlertTitle>
+              <AlertDescription className="text-sm font-medium">
+                {trafficWarning}
+              </AlertDescription>
             </Alert>
           ) : null}
 

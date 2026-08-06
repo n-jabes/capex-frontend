@@ -29,10 +29,14 @@ import {
 import { computePackageMetrics } from "@/lib/calculations";
 import { formatCurrency, formatPercent, expansionUtilToneClass } from "@/lib/format";
 import { collectTrafficWarnings } from "@/lib/traffic-warnings";
+import { collectSiteRedundancyWarnings } from "@/lib/site-redundancy";
 import { SummaryBreadcrumb } from "@/components/capex/SummaryBreadcrumb";
 import { VendorNodeLicenseTable } from "@/components/capex/VendorNodeLicenseTable";
 import { DiscountStatCards } from "@/components/capex/DiscountStatCards";
-import { TrafficCapacityWarning } from "@/components/capex/TrafficCapacityWarning";
+import {
+  TrafficCapacityWarning,
+  SiteRedundancyWarning,
+} from "@/components/capex/TrafficCapacityWarning";
 import {
   ColumnVisibilityMenu,
   useColumnVisibility,
@@ -69,6 +73,10 @@ export function SummaryPanel() {
       metrics: computeSummaryForNode(node),
       childRollups: computeChildRollups(node),
       trafficWarnings: collectTrafficWarnings(node),
+      siteRedundancyWarnings:
+        node.type === "vendor" || node.type === "vendorNodeName"
+          ? []
+          : collectSiteRedundancyWarnings(node),
     };
   }, [tree, selectedNode]);
 
@@ -97,14 +105,15 @@ export function SummaryPanel() {
     );
   }
 
-  const { node, path, metrics, childRollups, trafficWarnings } = summary;
+  const { node, path, metrics, childRollups, trafficWarnings, siteRedundancyWarnings } =
+    summary;
   const isVnn = node.type === "vendorNodeName";
   const displayName =
     node.type === "vendor" ? displayVendorNodeName(node) : node.name;
   const showDiscount = supportsNodeDiscount(node.type);
 
-  const goToWarningNode = (vendorNodeId: string) => {
-    const target = findNode(tree, vendorNodeId);
+  const goToWarningNode = (id: string) => {
+    const target = findNode(tree, id);
     if (target) setSelectedNode(toSelectedNode(target));
   };
 
@@ -226,6 +235,15 @@ export function SummaryPanel() {
         </div>
       ) : null}
 
+      {siteRedundancyWarnings.length > 0 ? (
+        <div className="px-4 pt-4">
+          <SiteRedundancyWarning
+            warnings={siteRedundancyWarnings}
+            onGoTo={goToWarningNode}
+          />
+        </div>
+      ) : null}
+
       <div className="p-4">
         {showDiscount ? (
           <DiscountStatCards
@@ -289,7 +307,7 @@ function ChildRollupTable({
 }: {
   rows: ReturnType<typeof computeChildRollups>;
 }) {
-  const { isVisible, toggle, columns } = useColumnVisibility(
+  const { isVisible, setColumnVisible, columns } = useColumnVisibility(
     "capex-cols-rollup",
     ROLLUP_COLUMNS,
   );
@@ -300,7 +318,7 @@ function ChildRollupTable({
         <ColumnVisibilityMenu
           columns={columns}
           isVisible={isVisible}
-          onToggle={toggle}
+          onSetVisible={setColumnVisible}
         />
       </div>
       <Table>
@@ -343,7 +361,7 @@ function ChildRollupTable({
 
 function PackageTable({ treeNodeId }: { treeNodeId: string }) {
   const { tree } = useCapex();
-  const { isVisible, toggle, columns } = useColumnVisibility(
+  const { isVisible, setColumnVisible, columns } = useColumnVisibility(
     "capex-cols-packages-scope",
     PACKAGE_COLUMNS,
   );
@@ -388,7 +406,7 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
         <ColumnVisibilityMenu
           columns={columns}
           isVisible={isVisible}
-          onToggle={toggle}
+          onSetVisible={setColumnVisible}
         />
       </div>
       <Table>

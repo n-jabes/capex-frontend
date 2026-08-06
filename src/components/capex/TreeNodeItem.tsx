@@ -39,6 +39,10 @@ import {
   findFirstWarningVendorNode,
   nodeHasTrafficWarning,
 } from "@/lib/traffic-warnings";
+import {
+  findFirstRedundancyNode,
+  nodeHasSiteRedundancyWarning,
+} from "@/lib/site-redundancy";
 import { AddChildDialog } from "@/components/capex/AddChildDialog";
 import { CapexEntryWizard } from "@/components/capex/CapexEntryWizard";
 import { RenameDialog } from "@/components/capex/RenameDialog";
@@ -99,6 +103,8 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
   const displayName =
     node.type === "vendor" ? displayVendorNodeName(node) : node.name;
   const hasTrafficWarning = nodeHasTrafficWarning(node);
+  const hasRedundancyWarning = nodeHasSiteRedundancyWarning(node);
+  const hasAnyWarning = hasTrafficWarning || hasRedundancyWarning;
 
   const handleSelect = () => {
     setSelectedNode(toSelectedNode(node));
@@ -106,10 +112,18 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
 
   const handleWarningClick = (event: MouseEvent) => {
     event.stopPropagation();
-    const target = findFirstWarningVendorNode(node);
-    if (target) {
-      setSelectedNode(toSelectedNode(target));
-      setExpanded(target.id, true);
+    if (hasTrafficWarning) {
+      const target = findFirstWarningVendorNode(node);
+      if (target) {
+        setSelectedNode(toSelectedNode(target));
+        setExpanded(target.id, true);
+        return;
+      }
+    }
+    const redundancyTarget = findFirstRedundancyNode(node);
+    if (redundancyTarget) {
+      setSelectedNode(toSelectedNode(redundancyTarget));
+      setExpanded(redundancyTarget.id, true);
     }
   };
 
@@ -163,16 +177,20 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
             </span>
             <span className="text-base leading-none">{typeIcons[node.type]}</span>
             <span className="truncate font-medium">{displayName}</span>
-            {hasTrafficWarning ? (
+            {hasAnyWarning ? (
               <Tooltip>
                 <TooltipTrigger
-                  className="inline-flex shrink-0"
+                  className="inline-flex shrink-0 rounded-sm bg-amber-100 p-0.5 ring-1 ring-amber-400 dark:bg-amber-950"
                   onClick={handleWarningClick}
                 >
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
                 </TooltipTrigger>
                 <TooltipContent side="top">
-                  Traffic exceeds Ex License Quantity — click to open
+                  {hasTrafficWarning && hasRedundancyWarning
+                    ? "Capacity and site redundancy warnings — click to open"
+                    : hasRedundancyWarning
+                      ? "Site redundancy at risk (N+1) — click to open"
+                      : "Traffic exceeds Ex License Quantity — click to open"}
                 </TooltipContent>
               </Tooltip>
             ) : null}

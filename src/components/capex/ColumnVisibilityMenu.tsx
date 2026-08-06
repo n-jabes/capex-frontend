@@ -18,6 +18,24 @@ export interface TableColumnDef {
   locked?: boolean;
 }
 
+function normalizeVisibleIds(
+  stored: unknown,
+  columns: TableColumnDef[],
+): string[] {
+  const defaults = columns.map((column) => column.id);
+  const fromStore = Array.isArray(stored)
+    ? stored.filter(
+        (id): id is string =>
+          typeof id === "string" && columns.some((column) => column.id === id),
+      )
+    : [];
+  const next = new Set(fromStore.length ? fromStore : defaults);
+  for (const column of columns) {
+    if (column.locked) next.add(column.id);
+  }
+  return columns.map((column) => column.id).filter((id) => next.has(id));
+}
+
 export function useColumnVisibility(
   storageKey: string,
   columns: TableColumnDef[],
@@ -28,45 +46,45 @@ export function useColumnVisibility(
     defaultVisible,
   );
 
-  const visibleSet = new Set(visible);
-  for (const column of columns) {
-    if (column.locked) visibleSet.add(column.id);
-  }
+  const visibleIds = normalizeVisibleIds(visible, columns);
+  const visibleSet = new Set(visibleIds);
 
   const isVisible = (id: string) => visibleSet.has(id);
 
-  const toggle = (id: string) => {
+  const setColumnVisible = (id: string, nextVisible: boolean) => {
     const column = columns.find((item) => item.id === id);
     if (!column || column.locked) return;
 
     setVisible((prev) => {
-      const lockedIds = columns.filter((c) => c.locked).map((c) => c.id);
-      const next = new Set(prev.length ? prev : defaultVisible);
-      for (const lockedId of lockedIds) next.add(lockedId);
-
-      if (next.has(id)) {
-        if (next.size <= 1) return Array.from(next);
-        next.delete(id);
+      const current = new Set(normalizeVisibleIds(prev, columns));
+      if (nextVisible) {
+        current.add(id);
       } else {
-        next.add(id);
+        if (current.size <= 1) return normalizeVisibleIds(prev, columns);
+        current.delete(id);
       }
-      return columns.map((c) => c.id).filter((colId) => next.has(colId));
+      for (const locked of columns.filter((c) => c.locked)) {
+        current.add(locked.id);
+      }
+      return columns.map((c) => c.id).filter((colId) => current.has(colId));
     });
   };
 
-  return { isVisible, toggle, columns };
+  return { isVisible, setColumnVisible, columns };
 }
 
 interface ColumnVisibilityMenuProps {
   columns: TableColumnDef[];
   isVisible: (id: string) => boolean;
-  onToggle: (id: string) => void;
+  onToggle?: (id: string) => void;
+  onSetVisible?: (id: string, visible: boolean) => void;
 }
 
 export function ColumnVisibilityMenu({
   columns,
   isVisible,
   onToggle,
+  onSetVisible,
 }: ColumnVisibilityMenuProps) {
   return (
     <DropdownMenu>
@@ -82,7 +100,14 @@ export function ColumnVisibilityMenu({
             key={column.id}
             checked={isVisible(column.id)}
             disabled={column.locked}
-            onCheckedChange={() => onToggle(column.id)}
+            onCheckedChange={(checked) => {
+              if (typeof checked !== "boolean") return;
+              if (onSetVisible) {
+                onSetVisible(column.id, checked);
+                return;
+              }
+              onToggle?.(column.id);
+            }}
           >
             {column.label}
           </DropdownMenuCheckboxItem>
