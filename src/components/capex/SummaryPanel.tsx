@@ -81,7 +81,15 @@ export function SummaryPanel() {
   }, [tree, selectedNode]);
 
   useEffect(() => {
-    setVnnYearFilter("all");
+    if (!selectedNode || selectedNode.type !== "vendorNodeName") {
+      setVnnYearFilter("all");
+      return;
+    }
+    const node = findNode(tree, selectedNode.id);
+    const firstYearId = node?.licenseYears?.[0]?.id;
+    setVnnYearFilter(firstYearId ?? "all");
+    // Only reset year when navigating to a different node
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: tree read for initial year only
   }, [selectedNode?.id]);
 
   if (!isHydrated) {
@@ -136,7 +144,7 @@ export function SummaryPanel() {
             <h2 className="text-lg font-semibold leading-tight">{displayName}</h2>
             <p className="text-xs text-muted-foreground">
               Select packages for a year and enter CAPEX quantities. Stats follow
-              the year filter (default: all years).
+              the selected year (defaults to the first year).
             </p>
           </div>
         </div>

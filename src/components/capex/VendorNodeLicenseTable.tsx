@@ -71,7 +71,7 @@ export function VendorNodeLicenseTable({
 }: VendorNodeLicenseTableProps) {
   const { tree, settings, updateVendorNodeLicenseYears } = useCapex();
   const [query, setQuery] = useState("");
-  const [selectedOnly, setSelectedOnly] = useState(false);
+  const [selectedOnly, setSelectedOnly] = useState(true);
   const [editing, setEditing] = useState<LicensePackageInstance | null>(null);
   const [newYearName, setNewYearName] = useState("");
   const [showAddYear, setShowAddYear] = useState(false);
