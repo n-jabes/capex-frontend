@@ -10,7 +10,7 @@ export function Header() {
           CV
         </div>
         <h1 className="text-base font-semibold tracking-tight">
-        Axian Telecom CAPEX & OPEX
+        Axian Telecom Capacity and Pricing
         </h1>
       </div>
       <Badge variant="secondary" className="font-normal">

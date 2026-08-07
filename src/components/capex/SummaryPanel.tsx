@@ -57,6 +57,12 @@ const PACKAGE_WIDTHS = {
   totalPrice: 130,
 };
 
+const panelCardClass =
+  "gap-0 py-0 shadow-md ring-1 ring-border/50 border border-border/70";
+
+const compactTableClass =
+  "table-fixed [&_th]:h-8 [&_th]:py-1 [&_td]:px-2 [&_td]:py-1";
+
 export function SummaryPanel() {
   const { tree, selectedNode, isHydrated, updateNodeDiscount, setSelectedNode } =
     useCapex();
@@ -155,7 +161,7 @@ export function SummaryPanel() {
           </div>
         ) : null}
 
-        <div className="px-4 py-2">
+        <div className="px-4 py-1.5">
           <DiscountStatCards
             subtotal={subtotal}
             discountPercent={discountPercent}
@@ -165,12 +171,12 @@ export function SummaryPanel() {
           />
         </div>
 
-        <div className="px-4 pb-4">
-          <Card className="shadow-sm">
-            <CardHeader className="px-4 py-2">
+        <div className="px-4 pb-3">
+          <Card className={panelCardClass}>
+            <CardHeader className="border-b px-3 py-1.5">
               <CardTitle className="text-sm">License packages</CardTitle>
             </CardHeader>
-            <CardContent className="px-4 pb-3 pt-0">
+            <CardContent className="px-3 pb-2 pt-2">
               <VendorNodeLicenseTable
                 vendorNodeName={node}
                 yearFilter={vnnYearFilter}
@@ -252,7 +258,7 @@ export function SummaryPanel() {
         </div>
       ) : null}
 
-      <div className="px-4 py-2">
+      <div className="px-4 py-1.5">
         {showDiscount ? (
           <DiscountStatCards
             subtotal={subtotal}
@@ -263,16 +269,16 @@ export function SummaryPanel() {
             inputId={`discount-pct-${node.id}`}
           />
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <Card className="shadow-sm sm:col-span-1">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 pb-0 pt-2">
-                <CardTitle className="text-[11px] font-medium text-muted-foreground">
+          <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+            <Card className={`${panelCardClass} sm:col-span-1`}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 px-2.5 pb-0 pt-1.5">
+                <CardTitle className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   Total Price
                 </CardTitle>
                 <DollarSign className="h-3 w-3 text-muted-foreground" />
               </CardHeader>
-              <CardContent className="px-3 pb-2 pt-0.5">
-                <p className="text-base font-bold leading-tight">
+              <CardContent className="px-2.5 pb-1.5 pt-0">
+                <p className="text-sm font-bold leading-none tabular-nums">
                   {formatCurrency(metrics.totalCost)}
                 </p>
               </CardContent>
@@ -282,9 +288,9 @@ export function SummaryPanel() {
       </div>
 
       {childRollups.length > 0 ? (
-        <div className="px-4 pb-2">
-          <Card className="shadow-sm">
-            <CardHeader className="px-4 py-2">
+        <div className="px-4 pb-1.5">
+          <Card className={panelCardClass}>
+            <CardHeader className="border-b px-3 py-1.5">
               <CardTitle className="text-sm">Summary</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -295,9 +301,9 @@ export function SummaryPanel() {
       ) : null}
 
       {metrics.packageCount > 0 ? (
-        <div className="px-4 pb-4">
-          <Card className="shadow-sm">
-            <CardHeader className="px-4 py-2">
+        <div className="px-4 pb-3">
+          <Card className={panelCardClass}>
+            <CardHeader className="border-b px-3 py-1.5">
               <CardTitle className="text-sm">All packages in scope</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -321,7 +327,10 @@ function ChildRollupTable({
   );
 
   return (
-    <Table className="table-fixed" style={{ width: totalWidth, minWidth: "100%" }}>
+    <Table
+      className={compactTableClass}
+      style={{ width: totalWidth, minWidth: "100%" }}
+    >
       <TableHeader>
         <TableRow>
           <ResizableTableHead
@@ -329,6 +338,7 @@ function ChildRollupTable({
             width={widths.name}
             onWidthChange={setWidth}
             minWidth={120}
+            className="h-8"
           >
             Name
           </ResizableTableHead>
@@ -338,6 +348,7 @@ function ChildRollupTable({
             onWidthChange={setWidth}
             align="right"
             minWidth={90}
+            className="h-8"
           >
             Total price
           </ResizableTableHead>
@@ -347,6 +358,7 @@ function ChildRollupTable({
             onWidthChange={setWidth}
             align="right"
             minWidth={80}
+            className="h-8"
           >
             Packages
           </ResizableTableHead>
@@ -355,13 +367,13 @@ function ChildRollupTable({
       <TableBody>
         {rows.map((row) => (
           <TableRow key={row.id}>
-            <TableCell className="font-medium">{row.name}</TableCell>
-            <TableCell className="text-right">
+            <TableCell className="py-1 font-medium">{row.name}</TableCell>
+            <TableCell className="py-1 text-right">
               {row.metrics.packagesWithData > 0
                 ? formatCurrency(row.metrics.totalCost)
                 : "—"}
             </TableCell>
-            <TableCell className="text-right">
+            <TableCell className="py-1 text-right">
               {row.metrics.packagesWithData}/{row.metrics.packageCount}
             </TableCell>
           </TableRow>
@@ -420,7 +432,7 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
 
   return (
     <Table
-      className="table-fixed"
+      className={compactTableClass}
       style={{ width: totalWidth, minWidth: "100%" }}
     >
       <TableHeader>
@@ -430,6 +442,7 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
             width={widths.vendorNodeName}
             onWidthChange={setWidth}
             minWidth={120}
+            className="h-8"
           >
             Vendor Node Name
           </ResizableTableHead>
@@ -438,6 +451,7 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
             width={widths.licensePackage}
             onWidthChange={setWidth}
             minWidth={140}
+            className="h-8"
           >
             License Package
           </ResizableTableHead>
@@ -446,6 +460,7 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
             width={widths.unit}
             onWidthChange={setWidth}
             minWidth={70}
+            className="h-8"
           >
             Unit
           </ResizableTableHead>
@@ -455,6 +470,7 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
             onWidthChange={setWidth}
             align="right"
             minWidth={70}
+            className="h-8"
           >
             C. util
           </ResizableTableHead>
@@ -464,6 +480,7 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
             onWidthChange={setWidth}
             align="right"
             minWidth={70}
+            className="h-8"
           >
             Exp. util
           </ResizableTableHead>
@@ -473,6 +490,7 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
             onWidthChange={setWidth}
             align="right"
             minWidth={90}
+            className="h-8"
           >
             Total price
           </ResizableTableHead>
@@ -481,18 +499,20 @@ function PackageTable({ treeNodeId }: { treeNodeId: string }) {
       <TableBody>
         {packages.map((row) => (
           <TableRow key={row.id}>
-            <TableCell className="font-medium">{row.vendorNodeName}</TableCell>
-            <TableCell>{row.licensePackage}</TableCell>
-            <TableCell>{row.unit}</TableCell>
+            <TableCell className="py-1 font-medium">
+              {row.vendorNodeName}
+            </TableCell>
+            <TableCell className="py-1">{row.licensePackage}</TableCell>
+            <TableCell className="py-1">{row.unit}</TableCell>
             <TableCell
-              className={`text-right ${currentUtilHotClass(hotInstanceIds.has(row.id))}`}
+              className={`py-1 text-right ${currentUtilHotClass(hotInstanceIds.has(row.id))}`}
             >
               {row.hasData ? formatPercent(row.currentUtil) : "—"}
             </TableCell>
-            <TableCell className="text-right">
+            <TableCell className="py-1 text-right">
               {row.hasData ? formatPercent(row.expansionUtil) : "—"}
             </TableCell>
-            <TableCell className="text-right">
+            <TableCell className="py-1 text-right">
               {row.hasData ? formatCurrency(row.total) : "—"}
             </TableCell>
           </TableRow>

@@ -88,7 +88,7 @@ function TreeViewContent() {
     <div className="flex h-full flex-col">
       <div className="space-y-3 border-b px-4 py-3">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold">CAPEX Hierarchy</h2>
+          <h2 className="text-sm font-semibold">Network Forecast</h2>
           <p className="text-xs text-muted-foreground">
             {tree.length} {tree.length === 1 ? "country" : "countries"}
             {projectNames.length > 0 &&
