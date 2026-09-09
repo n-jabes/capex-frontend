@@ -1,4 +1,4 @@
-import { getApiBaseUrl, getBootstrapHeaders } from "@/lib/api/config";
+import { getApiBaseUrl } from "@/lib/api/config";
 
 export class CapexApiError extends Error {
   status: number;
@@ -44,12 +44,6 @@ export async function capexFetch<T>(
   }
 
   const headers = new Headers(init.headers);
-  const bootstrap = getBootstrapHeaders();
-  if (bootstrap) {
-    for (const [key, value] of Object.entries(bootstrap)) {
-      headers.set(key, value);
-    }
-  }
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
