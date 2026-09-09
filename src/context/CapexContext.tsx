@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
 import { DEFAULT_APP_SETTINGS } from "@/data/seedCatalogs";
@@ -27,25 +28,41 @@ import type {
 } from "@/types/capex";
 import {
   addChildToNode,
+  canPasteSubtree,
+  CAPEX_CLIPBOARD_MIME,
+  cloneSubtreeWithNewIds,
+  createClipboardPayload,
   createInitialTree,
   deleteNodeFromTree,
+  findNode,
   generateId,
+  getPasteBlockReason,
+  isCapexClipboardPayload,
   migrateLicenseYearsTree,
   migrateSelectedNodeType,
   migrateTreeHierarchy,
+  summarizeSubtreeForClipboard,
+  toSelectedNode,
   treeNeedsHierarchyMigration,
   treeNeedsLicenseYearsMigration,
   updateNodeInTree,
+  type CapexClipboardPayload,
 } from "@/lib/tree-utils";
 
 const TREE_KEY = "capex-tree-data";
 const SETTINGS_KEY = "capex-app-settings";
+const CLIPBOARD_KEY = "capex-tree-clipboard";
+
+export type PasteResult =
+  | { ok: true; node: CapexTreeNode }
+  | { ok: false; reason: string };
 
 interface CapexContextValue {
   tree: CapexTreeNode[];
   settings: AppSettings;
   selectedNode: SelectedNode | null;
   isHydrated: boolean;
+  clipboard: CapexClipboardPayload | null;
   setSelectedNode: (node: SelectedNode | null) => void;
   addChild: (parentId: string, child: CapexTreeNode) => void;
   renameNode: (id: string, name: string) => void;
@@ -72,6 +89,10 @@ interface CapexContextValue {
     discountPercent: number,
   ) => void;
   updateNodeDiscount: (nodeId: string, discountPercent: number) => void;
+  copyNode: (id: string) => boolean;
+  canPasteInto: (parentId: string | null) => boolean;
+  pasteBlockReason: (parentId: string | null) => string | null;
+  pasteInto: (parentId: string | null) => PasteResult;
 }
 
 const CapexContext = createContext<CapexContextValue | null>(null);
@@ -89,8 +110,35 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     "capex-selected-node",
     null,
   );
+  const [clipboard, setClipboard] = useState<CapexClipboardPayload | null>(
+    null,
+  );
 
   const isHydrated = treeHydrated && settingsHydrated;
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(CLIPBOARD_KEY);
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (isCapexClipboardPayload(parsed)) setClipboard(parsed);
+    } catch {
+      // ignore corrupt clipboard
+    }
+  }, []);
+
+  const persistClipboard = useCallback((payload: CapexClipboardPayload | null) => {
+    setClipboard(payload);
+    try {
+      if (payload) {
+        sessionStorage.setItem(CLIPBOARD_KEY, JSON.stringify(payload));
+      } else {
+        sessionStorage.removeItem(CLIPBOARD_KEY);
+      }
+    } catch {
+      // ignore quota / private mode
+    }
+  }, []);
 
   useEffect(() => {
     if (!settingsHydrated) return;
@@ -271,12 +319,101 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   /** @deprecated Prefer updateNodeDiscount */
   const updateVendorNodeDiscount = updateNodeDiscount;
 
+  const copyNode = useCallback(
+    (id: string) => {
+      const source = findNode(tree, id);
+      if (!source || source.type === "package") return false;
+      const payload = createClipboardPayload(source);
+      persistClipboard(payload);
+
+      const text = summarizeSubtreeForClipboard(source);
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        void (async () => {
+          try {
+            if (navigator.clipboard.write && typeof ClipboardItem !== "undefined") {
+              const item = new ClipboardItem({
+                "text/plain": new Blob([text], { type: "text/plain" }),
+                [CAPEX_CLIPBOARD_MIME]: new Blob([JSON.stringify(payload)], {
+                  type: CAPEX_CLIPBOARD_MIME,
+                }),
+              });
+              await navigator.clipboard.write([item]);
+              return;
+            }
+          } catch {
+            // Custom MIME unsupported — fall through to plain text
+          }
+          try {
+            await navigator.clipboard.writeText(text);
+          } catch {
+            // sessionStorage buffer still holds the payload
+          }
+        })();
+      }
+      return true;
+    },
+    [tree, persistClipboard],
+  );
+
+  const canPasteInto = useCallback(
+    (parentId: string | null) => {
+      if (!clipboard) return false;
+      if (parentId === null) {
+        return canPasteSubtree(null, clipboard.node.type);
+      }
+      const parent = findNode(tree, parentId);
+      if (!parent) return false;
+      return canPasteSubtree(parent.type, clipboard.node.type);
+    },
+    [clipboard, tree],
+  );
+
+  const pasteBlockReason = useCallback(
+    (parentId: string | null) => {
+      if (!clipboard) return "Nothing copied yet.";
+      if (parentId === null) {
+        return getPasteBlockReason(null, clipboard.node.type);
+      }
+      const parent = findNode(tree, parentId);
+      if (!parent) return "Parent node not found.";
+      return getPasteBlockReason(parent.type, clipboard.node.type);
+    },
+    [clipboard, tree],
+  );
+
+  const pasteInto = useCallback(
+    (parentId: string | null): PasteResult => {
+      if (!clipboard) return { ok: false, reason: "Nothing copied yet." };
+
+      const cloned = cloneSubtreeWithNewIds(clipboard.node);
+
+      if (parentId === null) {
+        const reason = getPasteBlockReason(null, clipboard.node.type);
+        if (reason) return { ok: false, reason };
+        setTree((prev) => [...prev, cloned]);
+        setSelectedNode(toSelectedNode(cloned));
+        return { ok: true, node: cloned };
+      }
+
+      const parent = findNode(tree, parentId);
+      if (!parent) return { ok: false, reason: "Parent node not found." };
+      const reason = getPasteBlockReason(parent.type, clipboard.node.type);
+      if (reason) return { ok: false, reason };
+
+      setTree((prev) => addChildToNode(prev, parentId, cloned));
+      setSelectedNode(toSelectedNode(cloned));
+      return { ok: true, node: cloned };
+    },
+    [clipboard, tree, setTree, setSelectedNode],
+  );
+
   const value = useMemo(
     () => ({
       tree,
       settings,
       selectedNode,
       isHydrated,
+      clipboard,
       setSelectedNode,
       addChild,
       renameNode,
@@ -290,12 +427,17 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       removeLicensePackage,
       updateVendorNodeDiscount,
       updateNodeDiscount,
+      copyNode,
+      canPasteInto,
+      pasteBlockReason,
+      pasteInto,
     }),
     [
       tree,
       settings,
       selectedNode,
       isHydrated,
+      clipboard,
       setSelectedNode,
       addChild,
       renameNode,
@@ -309,6 +451,10 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       removeLicensePackage,
       updateVendorNodeDiscount,
       updateNodeDiscount,
+      copyNode,
+      canPasteInto,
+      pasteBlockReason,
+      pasteInto,
     ],
   );
 

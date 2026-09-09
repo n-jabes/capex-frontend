@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FoldVertical, Plus } from "lucide-react";
+import { ClipboardPaste, FoldVertical, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -20,14 +20,87 @@ import {
   useTreeExpansion,
 } from "@/components/capex/TreeExpansionContext";
 import type { CapexTreeNode } from "@/types/capex";
+import { nodeTypeLabel } from "@/lib/tree-utils";
 
 function TreeViewContent() {
-  const { tree, addChild, setSelectedNode, isHydrated } = useCapex();
-  const { collapseAllToCountries } = useTreeExpansion();
+  const {
+    tree,
+    addChild,
+    setSelectedNode,
+    selectedNode,
+    isHydrated,
+    copyNode,
+    canPasteInto,
+    pasteInto,
+    clipboard,
+  } = useCapex();
+  const { collapseAllToCountries, setExpanded } = useTreeExpansion();
   const [addDeliveryOpen, setAddDeliveryOpen] = useState(false);
   const [wizardDelivery, setWizardDelivery] = useState<CapexTreeNode | null>(
     null,
   );
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  const canPasteCountryAtRoot = canPasteInto(null);
+
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target.isContentEditable
+      );
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target)) return;
+      const mod = event.ctrlKey || event.metaKey;
+      if (!mod) return;
+
+      if (event.key.toLowerCase() === "c" && selectedNode) {
+        event.preventDefault();
+        if (copyNode(selectedNode.id)) {
+          setStatusMessage(`Copied ${nodeTypeLabel(selectedNode.type)}`);
+        }
+        return;
+      }
+
+      if (event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        const parentId =
+          selectedNode && canPasteInto(selectedNode.id)
+            ? selectedNode.id
+            : canPasteInto(null)
+              ? null
+              : selectedNode?.id ?? null;
+        const result = pasteInto(parentId);
+        if (!result.ok) {
+          setStatusMessage(result.reason);
+          return;
+        }
+        if (parentId) setExpanded(parentId, true);
+        setStatusMessage(`Pasted ${nodeTypeLabel(result.node.type)}`);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    selectedNode,
+    copyNode,
+    canPasteInto,
+    pasteInto,
+    setExpanded,
+  ]);
+
+  useEffect(() => {
+    if (!statusMessage) return;
+    const timer = window.setTimeout(() => setStatusMessage(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [statusMessage]);
 
   const projectNames = useMemo(
     () =>
@@ -93,7 +166,13 @@ function TreeViewContent() {
             {tree.length} {tree.length === 1 ? "country" : "countries"}
             {projectNames.length > 0 &&
               ` · ${projectNames.length} ${projectNames.length === 1 ? "project name" : "project names"}`}
+            {clipboard
+              ? ` · clipboard: ${nodeTypeLabel(clipboard.node.type)}`
+              : ""}
           </p>
+          {statusMessage ? (
+            <p className="text-xs text-foreground">{statusMessage}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {tree.length > 0 && (
@@ -104,6 +183,23 @@ function TreeViewContent() {
             >
               <FoldVertical className="mr-1 h-4 w-4" />
               Collapse to countries
+            </Button>
+          )}
+          {canPasteCountryAtRoot && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const result = pasteInto(null);
+                if (!result.ok) {
+                  setStatusMessage(result.reason);
+                  return;
+                }
+                setStatusMessage(`Pasted ${nodeTypeLabel(result.node.type)}`);
+              }}
+            >
+              <ClipboardPaste className="mr-1 h-4 w-4" />
+              Paste country
             </Button>
           )}
           {projectNames.length > 1 && (

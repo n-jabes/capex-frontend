@@ -5,6 +5,8 @@ import type { MouseEvent } from "react";
 import {
   ChevronDown,
   ChevronRight,
+  Copy,
+  ClipboardPaste,
   FoldVertical,
   MoreHorizontal,
   Plus,
@@ -76,12 +78,18 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
     addChild,
     renameNode,
     deleteNode,
+    copyNode,
+    canPasteInto,
+    pasteBlockReason,
+    pasteInto,
+    clipboard,
   } = useCapex();
   const { isExpanded, setExpanded, collapseNodeToDirectChildren } =
     useTreeExpansion();
   const [addOpen, setAddOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const expanded = isExpanded(node.id);
   const collapseLabel = collapseToChildTypeLabel(node.type);
@@ -91,6 +99,9 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
   const canAddChild = childType !== null;
   const canRename = node.type !== "package";
   const canDelete = !["country", "projectName"].includes(node.type);
+  const canCopy = node.type !== "package";
+  const pasteAllowed = canPasteInto(node.id);
+  const pasteReason = pasteBlockReason(node.id);
   const hasChildren = node.children.length > 0;
   const packageCount =
     node.type === "vendorNodeName"
@@ -106,8 +117,28 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
   const hasRedundancyWarning = nodeHasSiteRedundancyWarning(node);
   const hasAnyWarning = hasTrafficWarning || hasRedundancyWarning;
 
+  const flashMessage = (message: string) => {
+    setActionMessage(message);
+    window.setTimeout(() => setActionMessage(null), 2500);
+  };
+
   const handleSelect = () => {
     setSelectedNode(toSelectedNode(node));
+  };
+
+  const handleCopy = () => {
+    if (!copyNode(node.id)) return;
+    flashMessage(`Copied ${nodeTypeLabel(node.type)}`);
+  };
+
+  const handlePaste = () => {
+    const result = pasteInto(node.id);
+    if (!result.ok) {
+      flashMessage(result.reason);
+      return;
+    }
+    setExpanded(node.id, true);
+    flashMessage(`Pasted ${nodeTypeLabel(result.node.type)}`);
   };
 
   const handleWarningClick = (event: MouseEvent) => {
@@ -207,6 +238,12 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
             </span>
           </button>
 
+          {actionMessage && isSelected ? (
+            <span className="hidden max-w-[140px] truncate text-[10px] text-muted-foreground sm:inline">
+              {actionMessage}
+            </span>
+          ) : null}
+
           {hasChildren && collapseLabel && (
             <Tooltip>
               <TooltipTrigger
@@ -247,6 +284,27 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
                   Rename
                 </DropdownMenuItem>
               )}
+              {canCopy && (
+                <DropdownMenuItem onClick={handleCopy}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                disabled={!pasteAllowed}
+                title={!pasteAllowed ? (pasteReason ?? undefined) : undefined}
+                onClick={handlePaste}
+              >
+                <ClipboardPaste className="mr-2 h-4 w-4" />
+                {clipboard
+                  ? `Paste ${nodeTypeLabel(clipboard.node.type)}`
+                  : "Paste"}
+              </DropdownMenuItem>
+              {!pasteAllowed && clipboard ? (
+                <p className="px-2 pb-1.5 text-[10px] leading-snug text-muted-foreground">
+                  {pasteReason}
+                </p>
+              ) : null}
               {canDelete && (
                 <>
                   <DropdownMenuSeparator />

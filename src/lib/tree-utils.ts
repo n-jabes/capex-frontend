@@ -331,6 +331,104 @@ export function getChildTypeForParent(
   return map[parentType];
 }
 
+/** Custom clipboard MIME for Capex subtree payloads. */
+export const CAPEX_CLIPBOARD_MIME = "application/x-yas-capex-node";
+
+export interface CapexClipboardPayload {
+  version: 1;
+  copiedAt: string;
+  node: CapexTreeNode;
+}
+
+function cloneLicenseYears(years?: LicenseYear[]): LicenseYear[] | undefined {
+  if (!years) return undefined;
+  return years.map((year) => ({
+    ...year,
+    id: generateId(),
+    packages: year.packages.map((pkg) => ({
+      ...pkg,
+      id: generateId(),
+      packageData: pkg.packageData
+        ? { ...pkg.packageData }
+        : undefined,
+    })),
+  }));
+}
+
+/** Deep-clone a subtree with fresh IDs (keeps catalogId, data, discounts). */
+export function cloneSubtreeWithNewIds(node: CapexTreeNode): CapexTreeNode {
+  return {
+    ...node,
+    id: generateId(),
+    siteName: node.siteName,
+    catalogId: node.catalogId,
+    discountPercent: node.discountPercent,
+    packageData: node.packageData ? { ...node.packageData } : undefined,
+    licenseYears: cloneLicenseYears(node.licenseYears),
+    children: node.children.map(cloneSubtreeWithNewIds),
+  };
+}
+
+export function createClipboardPayload(node: CapexTreeNode): CapexClipboardPayload {
+  return {
+    version: 1,
+    copiedAt: new Date().toISOString(),
+    // Structural clone for the buffer (IDs remapped only on paste)
+    node: structuredClone(node),
+  };
+}
+
+export function isCapexClipboardPayload(
+  value: unknown,
+): value is CapexClipboardPayload {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as CapexClipboardPayload;
+  return (
+    payload.version === 1 &&
+    typeof payload.copiedAt === "string" &&
+    !!payload.node &&
+    typeof payload.node === "object" &&
+    typeof payload.node.id === "string" &&
+    typeof payload.node.type === "string" &&
+    typeof payload.node.name === "string" &&
+    Array.isArray(payload.node.children)
+  );
+}
+
+/** `parentType` null means paste at tree root (countries only). */
+export function canPasteSubtree(
+  parentType: CapexTreeNode["type"] | null,
+  clipboardRootType: CapexTreeNode["type"],
+): boolean {
+  if (parentType === null) return clipboardRootType === "country";
+  return getChildTypeForParent(parentType) === clipboardRootType;
+}
+
+export function getPasteBlockReason(
+  parentType: CapexTreeNode["type"] | null,
+  clipboardRootType: CapexTreeNode["type"],
+): string | null {
+  if (canPasteSubtree(parentType, clipboardRootType)) return null;
+  if (parentType === null) {
+    return `Only a country can be pasted at the root (clipboard has ${nodeTypeLabel(clipboardRootType)}).`;
+  }
+  const expected = getChildTypeForParent(parentType);
+  if (!expected) {
+    return `${nodeTypeLabel(parentType)} cannot have children.`;
+  }
+  return `Cannot paste ${nodeTypeLabel(clipboardRootType)} under ${nodeTypeLabel(parentType)}. Expected ${nodeTypeLabel(expected)}.`;
+}
+
+export function summarizeSubtreeForClipboard(node: CapexTreeNode): string {
+  let count = 0;
+  walkTreeNodes([node], () => {
+    count += 1;
+  });
+  const label =
+    node.type === "vendor" ? displayVendorNodeName(node) : node.name;
+  return `Capex ${nodeTypeLabel(node.type)}: ${label} (${count} node${count === 1 ? "" : "s"})`;
+}
+
 export function nodeTypeLabel(type: CapexTreeNode["type"]): string {
   const labels: Record<CapexTreeNode["type"], string> = {
     country: "Country",
