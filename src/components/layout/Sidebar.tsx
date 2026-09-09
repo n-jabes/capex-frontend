@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/capex-tree", label: "CAPEX Tree", icon: Network },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -47,7 +47,9 @@ export function Sidebar() {
       <nav className="flex flex-1 flex-col gap-1 px-2 pb-4">
         {navItems.map(({ href, label, icon: Icon }) => {
           const isActive =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+            href === "/dashboard"
+              ? pathname === "/dashboard"
+              : pathname.startsWith(href);
           return (
             <Link
               key={href}

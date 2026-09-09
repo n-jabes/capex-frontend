@@ -8,7 +8,7 @@ export default function AuthLayout({
   return (
     <div className="flex min-h-full flex-1 flex-col bg-gradient-to-b from-slate-50 to-slate-100">
       <header className="flex items-center justify-between px-6 py-4">
-        <Link href="/login" className="text-sm font-semibold tracking-tight">
+        <Link href="/" className="text-sm font-semibold tracking-tight">
           Axian Telecom Capacity and Pricing
         </Link>
       </header>

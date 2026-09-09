@@ -144,3 +144,80 @@
     @apply cursor-not-allowed;
   }
 }
+
+/* Marketing landing (Phase F) */
+.landing-hero-glow {
+  background:
+    radial-gradient(ellipse 80% 60% at 70% 40%, rgba(34, 140, 152, 0.45), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 20% 80%, rgba(240, 180, 41, 0.18), transparent 55%),
+    linear-gradient(160deg, #0b1f24 0%, #12353c 45%, #0b1f24 100%);
+  animation: landing-glow-shift 14s ease-in-out infinite alternate;
+}
+
+.landing-hero-mesh {
+  background-image:
+    linear-gradient(rgba(232, 240, 242, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 240, 242, 0.06) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 70% 60% at 65% 45%, black, transparent 75%);
+}
+
+.landing-hero-copy {
+  animation: landing-fade-up 0.9s ease-out both;
+}
+
+.landing-cta-primary {
+  animation: landing-fade-up 0.9s ease-out 0.15s both;
+}
+
+.landing-cta-secondary {
+  animation: landing-fade-up 0.9s ease-out 0.28s both;
+}
+
+.landing-pillar,
+.landing-stat {
+  animation: landing-fade-up 0.8s ease-out both;
+}
+
+.landing-pillar:nth-child(2),
+.landing-stat:nth-child(2) {
+  animation-delay: 0.08s;
+}
+.landing-pillar:nth-child(3),
+.landing-stat:nth-child(3) {
+  animation-delay: 0.16s;
+}
+.landing-stat:nth-child(4) {
+  animation-delay: 0.24s;
+}
+
+@keyframes landing-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes landing-glow-shift {
+  from {
+    filter: hue-rotate(0deg) saturate(1);
+  }
+  to {
+    filter: hue-rotate(12deg) saturate(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-glow,
+  .landing-hero-copy,
+  .landing-cta-primary,
+  .landing-cta-secondary,
+  .landing-pillar,
+  .landing-stat {
+    animation: none;
+  }
+}

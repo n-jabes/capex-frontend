@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const AUTH_PAGES = ["/login", "/register"];
+const PUBLIC_PATHS = ["/", "/login", "/register"];
 
 function isProtectedPath(pathname: string) {
-  if (pathname === "/") return true;
   return (
-    pathname.startsWith("/capex-tree") || pathname.startsWith("/settings")
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/capex-tree") ||
+    pathname.startsWith("/settings")
   );
 }
 
@@ -23,6 +25,10 @@ export function middleware(request: NextRequest) {
     if (hasSession) {
       return NextResponse.redirect(new URL("/capex-tree", request.url));
     }
+    return NextResponse.next();
+  }
+
+  if (PUBLIC_PATHS.includes(pathname)) {
     return NextResponse.next();
   }
 
