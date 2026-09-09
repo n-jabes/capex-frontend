@@ -6,11 +6,22 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { DEFAULT_APP_SETTINGS } from "@/data/seedCatalogs";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import {
+  CapexApiError,
+} from "@/lib/api/client";
+import {
+  getMyCatalogs,
+  getPortfolio,
+  listPortfolios,
+  updatePortfolioTree,
+} from "@/lib/api/capex-api";
+import { isCapexApiConfigured } from "@/lib/api/config";
 import {
   normalizeAppSettings,
   settingsNeedCatalogMigration,
@@ -52,10 +63,19 @@ import {
 const TREE_KEY = "capex-tree-data";
 const SETTINGS_KEY = "capex-app-settings";
 const CLIPBOARD_KEY = "capex-tree-clipboard";
+const TREE_SAVE_DEBOUNCE_MS = 800;
 
 export type PasteResult =
   | { ok: true; node: CapexTreeNode }
   | { ok: false; reason: string };
+
+export type CapexSyncStatus =
+  | "local"
+  | "loading"
+  | "synced"
+  | "saving"
+  | "error"
+  | "conflict";
 
 interface CapexContextValue {
   tree: CapexTreeNode[];
@@ -63,6 +83,12 @@ interface CapexContextValue {
   selectedNode: SelectedNode | null;
   isHydrated: boolean;
   clipboard: CapexClipboardPayload | null;
+  syncStatus: CapexSyncStatus;
+  syncError: string | null;
+  portfolioId: string | null;
+  portfolioVersion: number | null;
+  apiEnabled: boolean;
+  reloadFromServer: () => Promise<void>;
   setSelectedNode: (node: SelectedNode | null) => void;
   addChild: (parentId: string, child: CapexTreeNode) => void;
   renameNode: (id: string, name: string) => void;
@@ -97,15 +123,39 @@ interface CapexContextValue {
 
 const CapexContext = createContext<CapexContextValue | null>(null);
 
+function normalizeTree(nodes: CapexTreeNode[]): CapexTreeNode[] {
+  let next = nodes;
+  if (treeNeedsHierarchyMigration(next)) next = migrateTreeHierarchy(next);
+  if (treeNeedsLicenseYearsMigration(next)) next = migrateLicenseYearsTree(next);
+  return next;
+}
+
+function normalizeSettings(value: AppSettings): AppSettings {
+  let next = value;
+  if (settingsNeedCatalogMigration(next)) next = normalizeAppSettings(next);
+  if (relationshipsAreEmpty(next.relationships)) {
+    next = {
+      ...next,
+      relationships: withDefaultRelationshipsIfEmpty(next.relationships),
+    };
+  }
+  return next;
+}
+
 export function CapexProvider({ children }: { children: ReactNode }) {
-  const [tree, setTree, treeHydrated] = useLocalStorage<CapexTreeNode[]>(
-    TREE_KEY,
-    createInitialTree(),
-  );
-  const [settings, setSettings, settingsHydrated] = useLocalStorage<AppSettings>(
-    SETTINGS_KEY,
-    DEFAULT_APP_SETTINGS,
-  );
+  const apiEnabled = isCapexApiConfigured();
+
+  const [treeLocal, setTreeLocal, treeHydratedLocal] = useLocalStorage<
+    CapexTreeNode[]
+  >(TREE_KEY, createInitialTree());
+  const [settingsLocal, setSettingsLocal, settingsHydratedLocal] =
+    useLocalStorage<AppSettings>(SETTINGS_KEY, DEFAULT_APP_SETTINGS);
+
+  const [treeApi, setTreeApi] = useState<CapexTreeNode[]>(createInitialTree());
+  const [settingsApi, setSettingsApi] =
+    useState<AppSettings>(DEFAULT_APP_SETTINGS);
+  const [apiHydrated, setApiHydrated] = useState(false);
+
   const [selectedNode, setSelectedNode] = useLocalStorage<SelectedNode | null>(
     "capex-selected-node",
     null,
@@ -114,7 +164,68 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     null,
   );
 
-  const isHydrated = treeHydrated && settingsHydrated;
+  const [syncStatus, setSyncStatus] = useState<CapexSyncStatus>(
+    apiEnabled ? "loading" : "local",
+  );
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [portfolioId, setPortfolioId] = useState<string | null>(null);
+  const [portfolioVersion, setPortfolioVersion] = useState<number | null>(null);
+
+  const skipPersistRef = useRef(false);
+  const versionRef = useRef<number | null>(null);
+  const portfolioIdRef = useRef<string | null>(null);
+  const saveTimerRef = useRef<number | null>(null);
+
+  const tree = apiEnabled ? treeApi : treeLocal;
+  const settings = apiEnabled ? settingsApi : settingsLocal;
+  const setTree = apiEnabled ? setTreeApi : setTreeLocal;
+  const setSettings = apiEnabled ? setSettingsApi : setSettingsLocal;
+  const isHydrated = apiEnabled
+    ? apiHydrated
+    : treeHydratedLocal && settingsHydratedLocal;
+
+  const loadFromApi = useCallback(async () => {
+    setSyncStatus("loading");
+    setSyncError(null);
+    try {
+      const [summaries, catalogBundle] = await Promise.all([
+        listPortfolios(),
+        getMyCatalogs(),
+      ]);
+      if (summaries.length === 0) {
+        throw new Error(
+          "No portfolio found. Run backend seed:assign for this user email.",
+        );
+      }
+      const detail = await getPortfolio(summaries[0].id);
+      const rawTree = Array.isArray(detail.tree) ? detail.tree : [];
+      skipPersistRef.current = true;
+      setTreeApi(normalizeTree(rawTree));
+      setSettingsApi(
+        normalizeSettings({
+          catalogs: catalogBundle.catalogs,
+          relationships: catalogBundle.relationships,
+        }),
+      );
+      setPortfolioId(detail.id);
+      setPortfolioVersion(detail.version);
+      portfolioIdRef.current = detail.id;
+      versionRef.current = detail.version;
+      setApiHydrated(true);
+      setSyncStatus("synced");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to load Capex API data";
+      setSyncError(message);
+      setSyncStatus("error");
+      setApiHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!apiEnabled) return;
+    void loadFromApi();
+  }, [apiEnabled, loadFromApi]);
 
   useEffect(() => {
     try {
@@ -140,42 +251,128 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Local-mode migrations (API trees/settings are normalized on load).
   useEffect(() => {
-    if (!settingsHydrated) return;
-    if (!settingsNeedCatalogMigration(settings)) return;
-    setSettings(normalizeAppSettings(settings));
-  }, [settingsHydrated, settings, setSettings]);
+    if (apiEnabled || !settingsHydratedLocal) return;
+    if (!settingsNeedCatalogMigration(settingsLocal)) return;
+    setSettingsLocal(normalizeAppSettings(settingsLocal));
+  }, [apiEnabled, settingsHydratedLocal, settingsLocal, setSettingsLocal]);
 
   useEffect(() => {
-    if (!settingsHydrated) return;
-    if (!relationshipsAreEmpty(settings.relationships)) return;
-    setSettings((prev) => ({
+    if (apiEnabled || !settingsHydratedLocal) return;
+    if (!relationshipsAreEmpty(settingsLocal.relationships)) return;
+    setSettingsLocal((prev) => ({
       ...prev,
       relationships: withDefaultRelationshipsIfEmpty(prev.relationships),
     }));
-  }, [settingsHydrated, settings.relationships, setSettings]);
+  }, [
+    apiEnabled,
+    settingsHydratedLocal,
+    settingsLocal.relationships,
+    setSettingsLocal,
+  ]);
 
   useEffect(() => {
-    if (!treeHydrated) return;
-    if (!treeNeedsHierarchyMigration(tree)) return;
-    setTree(migrateTreeHierarchy(tree));
+    if (apiEnabled || !treeHydratedLocal) return;
+    if (!treeNeedsHierarchyMigration(treeLocal)) return;
+    setTreeLocal(migrateTreeHierarchy(treeLocal));
     setSelectedNode((prev) => {
       if (!prev) return prev;
       const migratedType = migrateSelectedNodeType(prev.type as string);
       return migratedType ? { ...prev, type: migratedType } : null;
     });
-  }, [treeHydrated, tree, setTree, setSelectedNode]);
+  }, [
+    apiEnabled,
+    treeHydratedLocal,
+    treeLocal,
+    setTreeLocal,
+    setSelectedNode,
+  ]);
 
   useEffect(() => {
-    if (!treeHydrated) return;
-    if (!treeNeedsLicenseYearsMigration(tree)) return;
-    setTree(migrateLicenseYearsTree(tree));
+    if (apiEnabled || !treeHydratedLocal) return;
+    if (!treeNeedsLicenseYearsMigration(treeLocal)) return;
+    setTreeLocal(migrateLicenseYearsTree(treeLocal));
     setSelectedNode((prev) => {
       if (!prev) return prev;
       if (prev.type === "package") return null;
       return prev;
     });
-  }, [treeHydrated, tree, setTree, setSelectedNode]);
+  }, [
+    apiEnabled,
+    treeHydratedLocal,
+    treeLocal,
+    setTreeLocal,
+    setSelectedNode,
+  ]);
+
+  // Debounced tree persistence to API.
+  useEffect(() => {
+    if (!apiEnabled || !apiHydrated) return;
+    if (skipPersistRef.current) {
+      skipPersistRef.current = false;
+      return;
+    }
+    const id = portfolioIdRef.current;
+    const version = versionRef.current;
+    if (!id || version == null) return;
+
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    setSyncStatus((prev) => (prev === "conflict" ? prev : "saving"));
+
+    saveTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const updated = await updatePortfolioTree(id, {
+            tree: treeApi,
+            version,
+          });
+          versionRef.current = updated.version;
+          setPortfolioVersion(updated.version);
+          setSyncStatus("synced");
+          setSyncError(null);
+        } catch (error) {
+          if (error instanceof CapexApiError && error.status === 409) {
+            setSyncStatus("conflict");
+            setSyncError(
+              "This portfolio changed elsewhere. Reloading the latest version.",
+            );
+            try {
+              const latest = await getPortfolio(id);
+              skipPersistRef.current = true;
+              setTreeApi(
+                normalizeTree(Array.isArray(latest.tree) ? latest.tree : []),
+              );
+              versionRef.current = latest.version;
+              setPortfolioVersion(latest.version);
+              setSyncStatus("conflict");
+            } catch (reloadError) {
+              setSyncStatus("error");
+              setSyncError(
+                reloadError instanceof Error
+                  ? reloadError.message
+                  : "Version conflict and reload failed",
+              );
+            }
+            return;
+          }
+          setSyncStatus("error");
+          setSyncError(
+            error instanceof Error ? error.message : "Failed to save portfolio",
+          );
+        }
+      })();
+    }, TREE_SAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    };
+  }, [apiEnabled, apiHydrated, treeApi]);
+
+  const reloadFromServer = useCallback(async () => {
+    if (!apiEnabled) return;
+    await loadFromApi();
+  }, [apiEnabled, loadFromApi]);
 
   const addChild = useCallback(
     (parentId: string, child: CapexTreeNode) => {
@@ -230,7 +427,10 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const updatePackageData = useCallback(
     (nodeId: string, data: PackagePurchaseData) => {
       setTree((prev) =>
-        updateNodeInTree(prev, nodeId, (node) => ({ ...node, packageData: data })),
+        updateNodeInTree(prev, nodeId, (node) => ({
+          ...node,
+          packageData: data,
+        })),
       );
     },
     [setTree],
@@ -316,7 +516,6 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     [setTree],
   );
 
-  /** @deprecated Prefer updateNodeDiscount */
   const updateVendorNodeDiscount = updateNodeDiscount;
 
   const copyNode = useCallback(
@@ -330,7 +529,10 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       if (typeof navigator !== "undefined" && navigator.clipboard) {
         void (async () => {
           try {
-            if (navigator.clipboard.write && typeof ClipboardItem !== "undefined") {
+            if (
+              navigator.clipboard.write &&
+              typeof ClipboardItem !== "undefined"
+            ) {
               const item = new ClipboardItem({
                 "text/plain": new Blob([text], { type: "text/plain" }),
                 [CAPEX_CLIPBOARD_MIME]: new Blob([JSON.stringify(payload)], {
@@ -414,6 +616,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       selectedNode,
       isHydrated,
       clipboard,
+      syncStatus,
+      syncError,
+      portfolioId,
+      portfolioVersion,
+      apiEnabled,
+      reloadFromServer,
       setSelectedNode,
       addChild,
       renameNode,
@@ -438,6 +646,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       selectedNode,
       isHydrated,
       clipboard,
+      syncStatus,
+      syncError,
+      portfolioId,
+      portfolioVersion,
+      apiEnabled,
+      reloadFromServer,
       setSelectedNode,
       addChild,
       renameNode,
