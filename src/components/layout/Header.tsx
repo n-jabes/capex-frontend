@@ -1,8 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCapex } from "@/context/CapexContext";
+import { logout } from "@/lib/api/auth-api";
 
 function syncLabel(status: ReturnType<typeof useCapex>["syncStatus"]) {
   switch (status) {
@@ -24,6 +26,7 @@ function syncLabel(status: ReturnType<typeof useCapex>["syncStatus"]) {
 }
 
 export function Header() {
+  const router = useRouter();
   const {
     apiEnabled,
     syncStatus,
@@ -31,6 +34,16 @@ export function Header() {
     portfolioVersion,
     reloadFromServer,
   } = useCapex();
+
+  const onLogout = async () => {
+    try {
+      await logout();
+    } catch {
+      // clear client route anyway
+    }
+    router.replace("/login");
+    router.refresh();
+  };
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-6">
@@ -42,14 +55,21 @@ export function Header() {
           Axian Telecom Capacity and Pricing
         </h1>
       </div>
-      <div className="flex max-w-[55%] items-center gap-2">
+      <div className="flex max-w-[60%] items-center gap-2">
         {syncError ? (
-          <span className="hidden truncate text-xs text-destructive sm:inline" title={syncError}>
+          <span
+            className="hidden truncate text-xs text-destructive sm:inline"
+            title={syncError}
+          >
             {syncError}
           </span>
         ) : null}
         {apiEnabled && (syncStatus === "error" || syncStatus === "conflict") ? (
-          <Button size="sm" variant="outline" onClick={() => void reloadFromServer()}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void reloadFromServer()}
+          >
             Reload
           </Button>
         ) : null}
@@ -62,8 +82,15 @@ export function Header() {
           className="font-normal"
         >
           {syncLabel(syncStatus)}
-          {apiEnabled && portfolioVersion != null ? ` · v${portfolioVersion}` : ""}
+          {apiEnabled && portfolioVersion != null
+            ? ` · v${portfolioVersion}`
+            : ""}
         </Badge>
+        {apiEnabled ? (
+          <Button size="sm" variant="ghost" onClick={() => void onLogout()}>
+            Sign out
+          </Button>
+        ) : null}
       </div>
     </header>
   );
