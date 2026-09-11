@@ -17,8 +17,26 @@ function apiModeEnabled() {
   return process.env.NEXT_PUBLIC_API_URL !== undefined;
 }
 
+/** True when browser calls this Next host `/api` (cookies are first-party here). */
+function isSameOriginApiMode() {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  if (raw === undefined) return false;
+  const trimmed = raw.trim().replace(/\/$/, "");
+  return (
+    trimmed === "" ||
+    trimmed === "/" ||
+    trimmed.toLowerCase() === "same-origin"
+  );
+}
+
 export function middleware(request: NextRequest) {
   if (!apiModeEnabled()) {
+    return NextResponse.next();
+  }
+
+  // Cross-origin (absolute Railway URL): cookies live on the API host.
+  // Next middleware cannot see them — AuthSessionGate enforces routes client-side.
+  if (!isSameOriginApiMode()) {
     return NextResponse.next();
   }
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Syne, Manrope } from "next/font/google";
+import { AuthSessionGate } from "@/components/auth/AuthSessionGate";
 
 const syne = Syne({
   subsets: ["latin"],
@@ -47,7 +48,7 @@ export default function AuthLayout({
       </header>
 
       <main className="relative z-10 flex flex-1 items-center justify-center px-4 pb-16 pt-4">
-        {children}
+        <AuthSessionGate mode="guest">{children}</AuthSessionGate>
       </main>
     </div>
   );

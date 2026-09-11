@@ -1,0 +1,74 @@
+"use client";
+
+import { Loader2 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { getMe } from "@/lib/api/auth-api";
+import { CapexApiError } from "@/lib/api/client";
+import { isCapexApiConfigured } from "@/lib/api/config";
+
+type AuthSessionGateProps = {
+  /** require = must be signed in; guest = redirect away if already signed in */
+  mode: "require" | "guest";
+  children: React.ReactNode;
+};
+
+/**
+ * Client-side session gate for cross-origin API mode (Vercel → Railway).
+ * Middleware cannot see Railway cookies until a shared custom domain / same-origin proxy.
+ */
+export function AuthSessionGate({ mode, children }: AuthSessionGateProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [ready, setReady] = useState(!isCapexApiConfigured());
+
+  useEffect(() => {
+    if (!isCapexApiConfigured()) {
+      setReady(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await getMe();
+        if (cancelled) return;
+        if (mode === "guest") {
+          router.replace("/capex-tree");
+          return;
+        }
+        setReady(true);
+      } catch (error) {
+        if (cancelled) return;
+        const unauthorized =
+          error instanceof CapexApiError && error.status === 401;
+        if (mode === "require") {
+          const next = encodeURIComponent(pathname || "/capex-tree");
+          router.replace(`/login?next=${next}`);
+          return;
+        }
+        if (unauthorized || mode === "guest") {
+          setReady(true);
+          return;
+        }
+        setReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, pathname, router]);
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-[40vh] flex-1 flex-col items-center justify-center gap-3">
+        <Loader2 className="h-7 w-7 animate-spin text-[#f0b429]" />
+        <p className="text-sm text-muted-foreground">Checking session…</p>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}

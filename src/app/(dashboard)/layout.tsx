@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { AuthSessionGate } from "@/components/auth/AuthSessionGate";
 import { CapexErrorBoundary } from "@/components/CapexErrorBoundary";
 import { AppShell } from "@/components/layout/AppShell";
 import { CapexProvider, useCapex } from "@/context/CapexContext";
@@ -47,12 +48,14 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <CapexProvider>
-      <AppShell>
-        <CapexErrorBoundary>
-          <DashboardGate>{children}</DashboardGate>
-        </CapexErrorBoundary>
-      </AppShell>
-    </CapexProvider>
+    <AuthSessionGate mode="require">
+      <CapexProvider>
+        <AppShell>
+          <CapexErrorBoundary>
+            <DashboardGate>{children}</DashboardGate>
+          </CapexErrorBoundary>
+        </AppShell>
+      </CapexProvider>
+    </AuthSessionGate>
   );
 }
