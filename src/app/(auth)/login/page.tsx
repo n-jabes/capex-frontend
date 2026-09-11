@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
+import { PasswordInput } from "@/components/auth/PasswordInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,16 +41,27 @@ function LoginForm() {
   return (
     <form
       onSubmit={onSubmit}
-      className="w-full max-w-md space-y-4 rounded-xl border bg-white p-6 shadow-sm"
+      className="w-full max-w-md space-y-5 rounded-2xl border border-white/10 bg-[#10262c]/85 p-7 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-md"
     >
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Access your Capex portfolio
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#f0b429]">
+          Welcome back
+        </p>
+        <h1
+          className="mt-2 text-2xl font-semibold tracking-tight text-white"
+          style={{ fontFamily: "var(--font-auth-display), sans-serif" }}
+        >
+          Sign in
+        </h1>
+        <p className="mt-1.5 text-sm text-[#9bb4bb]">
+          Access your Capex portfolio and planning workspace.
         </p>
       </div>
+
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email" className="text-[#d5e4e8]">
+          Email
+        </Label>
         <Input
           id="email"
           type="email"
@@ -57,27 +69,47 @@ function LoginForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          className="h-10 border-white/15 bg-white/5 text-white placeholder:text-white/35"
+          placeholder="you@company.com"
         />
       </div>
+
       <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
-        <Input
+        <Label htmlFor="password" className="text-[#d5e4e8]">
+          Password
+        </Label>
+        <PasswordInput
           id="password"
-          type="password"
           autoComplete="current-password"
           required
           minLength={8}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          className="border-white/15 bg-white/5 text-white placeholder:text-white/35"
+          placeholder="Enter your password"
         />
       </div>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      <Button type="submit" className="w-full" disabled={pending}>
+
+      {error ? (
+        <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-red-300">
+          {error}
+        </p>
+      ) : null}
+
+      <Button
+        type="submit"
+        className="h-10 w-full bg-[#f0b429] text-[#1a1205] hover:bg-[#f7c856]"
+        disabled={pending}
+      >
         {pending ? "Signing in…" : "Sign in"}
       </Button>
-      <p className="text-center text-sm text-muted-foreground">
+
+      <p className="text-center text-sm text-[#9bb4bb]">
         No account?{" "}
-        <Link href="/register" className="text-foreground underline">
+        <Link
+          href="/register"
+          className="font-medium text-[#f0b429] underline-offset-4 hover:underline"
+        >
           Create one
         </Link>
       </p>
@@ -87,7 +119,11 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="text-sm text-muted-foreground">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="text-sm text-[#9bb4bb]">Loading sign-in…</div>
+      }
+    >
       <LoginForm />
     </Suspense>
   );
