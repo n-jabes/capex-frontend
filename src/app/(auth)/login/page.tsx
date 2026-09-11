@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
+import { toast } from "sonner";
+import { AuthPendingOverlay } from "@/components/auth/AuthPendingOverlay";
 import { PasswordInput } from "@/components/auth/PasswordInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { login } from "@/lib/api/auth-api";
 import { CapexApiError } from "@/lib/api/client";
+import { redirectAfterAuth } from "@/lib/auth-navigation";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,16 +26,18 @@ function LoginForm() {
     setError(null);
     try {
       await login(email, password);
+      toast.success("Signed in", {
+        description: "Welcome back to Capex.",
+      });
       const next = searchParams.get("next") || "/capex-tree";
-      router.replace(next);
-      router.refresh();
+      redirectAfterAuth(next);
     } catch (err) {
-      setError(
+      const message =
         err instanceof CapexApiError
           ? err.message
-          : "Unable to sign in. Check API URL and credentials.",
-      );
-    } finally {
+          : "Unable to sign in. Check API URL and credentials.";
+      setError(message);
+      toast.error("Sign in failed", { description: message });
       setPending(false);
     }
   };
@@ -41,8 +45,15 @@ function LoginForm() {
   return (
     <form
       onSubmit={onSubmit}
-      className="w-full max-w-md space-y-5 rounded-2xl border border-white/10 bg-[#10262c]/85 p-7 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-md"
+      className="relative w-full max-w-md space-y-5 overflow-hidden rounded-2xl border border-white/10 bg-[#10262c]/85 p-7 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-md"
     >
+      {pending ? (
+        <AuthPendingOverlay
+          title="Signing you in…"
+          detail="Establishing a secure session."
+        />
+      ) : null}
+
       <div>
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#f0b429]">
           Welcome back
@@ -67,6 +78,7 @@ function LoginForm() {
           type="email"
           autoComplete="email"
           required
+          disabled={pending}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="h-10 border-white/15 bg-white/5 text-white placeholder:text-white/35"
@@ -83,6 +95,7 @@ function LoginForm() {
           autoComplete="current-password"
           required
           minLength={8}
+          disabled={pending}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="border-white/15 bg-white/5 text-white placeholder:text-white/35"

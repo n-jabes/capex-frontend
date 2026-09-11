@@ -22,6 +22,7 @@ import {
   updatePortfolioTree,
 } from "@/lib/api/capex-api";
 import { isCapexApiConfigured } from "@/lib/api/config";
+import { toast } from "sonner";
 import {
   normalizeAppSettings,
   settingsNeedCatalogMigration,
@@ -89,6 +90,7 @@ interface CapexContextValue {
   portfolioVersion: number | null;
   apiEnabled: boolean;
   reloadFromServer: () => Promise<void>;
+  clearSessionState: () => void;
   setSelectedNode: (node: SelectedNode | null) => void;
   addChild: (parentId: string, child: CapexTreeNode) => void;
   renameNode: (id: string, name: string) => void;
@@ -337,6 +339,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
             setSyncError(
               "This portfolio changed elsewhere. Reloading the latest version.",
             );
+            toast.warning("Version conflict", {
+              description: "Reloaded the latest portfolio from the server.",
+            });
             try {
               const latest = await getPortfolio(id);
               skipPersistRef.current = true;
@@ -373,6 +378,26 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     if (!apiEnabled) return;
     await loadFromApi();
   }, [apiEnabled, loadFromApi]);
+
+  const clearSessionState = useCallback(() => {
+    skipPersistRef.current = true;
+    setTreeApi(createInitialTree());
+    setSettingsApi(DEFAULT_APP_SETTINGS);
+    setPortfolioId(null);
+    setPortfolioVersion(null);
+    portfolioIdRef.current = null;
+    versionRef.current = null;
+    setSelectedNode(null);
+    setClipboard(null);
+    setSyncStatus(apiEnabled ? "loading" : "local");
+    setSyncError(null);
+    setApiHydrated(false);
+    try {
+      sessionStorage.removeItem(CLIPBOARD_KEY);
+    } catch {
+      // ignore
+    }
+  }, [apiEnabled, setSelectedNode]);
 
   const addChild = useCallback(
     (parentId: string, child: CapexTreeNode) => {
@@ -622,6 +647,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       portfolioVersion,
       apiEnabled,
       reloadFromServer,
+      clearSessionState,
       setSelectedNode,
       addChild,
       renameNode,
@@ -652,6 +678,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       portfolioVersion,
       apiEnabled,
       reloadFromServer,
+      clearSessionState,
       setSelectedNode,
       addChild,
       renameNode,

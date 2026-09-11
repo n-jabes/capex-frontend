@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { AuthPendingOverlay } from "@/components/auth/AuthPendingOverlay";
 import { PasswordInput } from "@/components/auth/PasswordInput";
 import { PasswordRequirements } from "@/components/auth/PasswordRequirements";
 import { Button } from "@/components/ui/button";
@@ -10,11 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { register } from "@/lib/api/auth-api";
 import { CapexApiError } from "@/lib/api/client";
+import { redirectAfterAuth } from "@/lib/auth-navigation";
 import { isPasswordValid } from "@/lib/password";
 import { cn } from "@/lib/utils";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -42,15 +43,17 @@ export default function RegisterPage() {
     setError(null);
     try {
       await register(email, password);
-      router.replace("/capex-tree");
-      router.refresh();
+      toast.success("Account created", {
+        description: "Your Capex portfolio is ready.",
+      });
+      redirectAfterAuth("/capex-tree");
     } catch (err) {
-      setError(
+      const message =
         err instanceof CapexApiError
           ? err.message
-          : "Unable to register. Ensure the API is running and Capex_1 is seeded.",
-      );
-    } finally {
+          : "Unable to register. Ensure the API is running and Capex_1 is seeded.";
+      setError(message);
+      toast.error("Registration failed", { description: message });
       setPending(false);
     }
   };
@@ -58,8 +61,15 @@ export default function RegisterPage() {
   return (
     <form
       onSubmit={onSubmit}
-      className="w-full max-w-md space-y-5 rounded-2xl border border-white/10 bg-[#10262c]/85 p-7 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-md"
+      className="relative w-full max-w-md space-y-5 overflow-hidden rounded-2xl border border-white/10 bg-[#10262c]/85 p-7 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-md"
     >
+      {pending ? (
+        <AuthPendingOverlay
+          title="Provisioning Capex portfolio…"
+          detail="Cloning Capex_1 catalogs and creating your workspace. This can take a few seconds."
+        />
+      ) : null}
+
       <div>
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#f0b429]">
           Get started
@@ -84,6 +94,7 @@ export default function RegisterPage() {
           type="email"
           autoComplete="email"
           required
+          disabled={pending}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="h-10 border-white/15 bg-white/5 text-white placeholder:text-white/35"
@@ -99,6 +110,7 @@ export default function RegisterPage() {
           id="password"
           autoComplete="new-password"
           required
+          disabled={pending}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="border-white/15 bg-white/5 text-white placeholder:text-white/35"
@@ -118,6 +130,7 @@ export default function RegisterPage() {
           id="confirmPassword"
           autoComplete="new-password"
           required
+          disabled={pending}
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
           className={cn(

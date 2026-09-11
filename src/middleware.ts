@@ -12,9 +12,13 @@ function isProtectedPath(pathname: string) {
   );
 }
 
+function apiModeEnabled() {
+  // Unset → localStorage demo (no auth gates).
+  return process.env.NEXT_PUBLIC_API_URL !== undefined;
+}
+
 export function middleware(request: NextRequest) {
-  // Local-only mode (no API URL): skip auth redirects.
-  if (!process.env.NEXT_PUBLIC_API_URL) {
+  if (!apiModeEnabled()) {
     return NextResponse.next();
   }
 
