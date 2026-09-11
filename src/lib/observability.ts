@@ -2,9 +2,11 @@
  * Optional Sentry hook. No-ops unless NEXT_PUBLIC_SENTRY_DSN is set.
  * Wire a real SDK later without changing call sites.
  */
-export function captureClientError(error: unknown, context?: Record<string, unknown>) {
+export function captureClientError(
+  error: unknown,
+  context?: Record<string, unknown>,
+) {
   const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
   if (!dsn) return;
-  // eslint-disable-next-line no-console
   console.error("[sentry:client]", error, context ?? {});
 }

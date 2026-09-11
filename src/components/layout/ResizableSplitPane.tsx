@@ -29,10 +29,12 @@ export function ResizableSplitPane({
   const percentRef = useRef(defaultLeftPercent);
   const draggingRef = useRef(false);
   const [dragging, setDragging] = useState(false);
+  const [ariaPercent, setAriaPercent] = useState(defaultLeftPercent);
 
   const applyWidth = useCallback((percent: number) => {
     const clamped = Math.min(maxLeftPercent, Math.max(minLeftPercent, percent));
     percentRef.current = clamped;
+    setAriaPercent(clamped);
     if (leftPaneRef.current) {
       leftPaneRef.current.style.width = `${clamped}%`;
     }
@@ -95,7 +97,7 @@ export function ResizableSplitPane({
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-valuenow={Math.round(percentRef.current)}
+        aria-valuenow={Math.round(ariaPercent)}
         aria-label="Resize panels"
         className={cn(
           "relative z-10 w-1.5 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/40",

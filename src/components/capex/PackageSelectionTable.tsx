@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -41,6 +41,41 @@ interface PackageSelectionTableProps {
 
 type SortKey = "name" | "licensePackage" | "unit" | "unitPrice";
 type SortDirection = "asc" | "desc";
+
+function SortHeader({
+  label,
+  column,
+  className,
+  sortKey,
+  sortDirection,
+  onToggle,
+}: {
+  label: string;
+  column: SortKey;
+  className?: string;
+  sortKey: SortKey;
+  sortDirection: SortDirection;
+  onToggle: (key: SortKey) => void;
+}) {
+  return (
+    <TableHead className={className}>
+      <button
+        type="button"
+        onClick={() => onToggle(column)}
+        className="inline-flex items-center gap-1 hover:text-foreground"
+      >
+        {label}
+        {sortKey === column ? (
+          sortDirection === "asc" ? (
+            <ArrowUp className="h-3.5 w-3.5" />
+          ) : (
+            <ArrowDown className="h-3.5 w-3.5" />
+          )
+        ) : null}
+      </button>
+    </TableHead>
+  );
+}
 
 export function PackageSelectionTable({
   rows,
@@ -89,17 +124,14 @@ export function PackageSelectionTable({
     safePage * pageSize + pageSize,
   );
 
-  useEffect(() => {
-    setPage(0);
-  }, [query, sortKey, sortDirection]);
-
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-      return;
+    } else {
+      setSortKey(key);
+      setSortDirection("asc");
     }
-    setSortKey(key);
-    setSortDirection("asc");
+    setPage(0);
   };
 
   const toggleRow = (row: PackageSelectionRow) => {
@@ -122,33 +154,6 @@ export function PackageSelectionTable({
     onSelectionChange([...new Set([...selectedIds, ...pageIds])]);
   };
 
-  const SortHeader = ({
-    label,
-    column,
-    className,
-  }: {
-    label: string;
-    column: SortKey;
-    className?: string;
-  }) => (
-    <TableHead className={className}>
-      <button
-        type="button"
-        onClick={() => toggleSort(column)}
-        className="inline-flex items-center gap-1 hover:text-foreground"
-      >
-        {label}
-        {sortKey === column ? (
-          sortDirection === "asc" ? (
-            <ArrowUp className="h-3.5 w-3.5" />
-          ) : (
-            <ArrowDown className="h-3.5 w-3.5" />
-          )
-        ) : null}
-      </button>
-    </TableHead>
-  );
-
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -156,7 +161,10 @@ export function PackageSelectionTable({
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(0);
+            }}
             placeholder="Search packages..."
             className="pl-9"
           />
@@ -180,13 +188,34 @@ export function PackageSelectionTable({
                   <Check className="h-3 w-3" />
                 </button>
               </TableHead>
-              <SortHeader label="Package" column="name" />
-              <SortHeader label="License Package" column="licensePackage" />
-              <SortHeader label="Unit" column="unit" />
+              <SortHeader
+                label="Package"
+                column="name"
+                sortKey={sortKey}
+                sortDirection={sortDirection}
+                onToggle={toggleSort}
+              />
+              <SortHeader
+                label="License Package"
+                column="licensePackage"
+                sortKey={sortKey}
+                sortDirection={sortDirection}
+                onToggle={toggleSort}
+              />
+              <SortHeader
+                label="Unit"
+                column="unit"
+                sortKey={sortKey}
+                sortDirection={sortDirection}
+                onToggle={toggleSort}
+              />
               <SortHeader
                 label="Unit Price"
                 column="unitPrice"
                 className="text-right"
+                sortKey={sortKey}
+                sortDirection={sortDirection}
+                onToggle={toggleSort}
               />
             </TableRow>
           </TableHeader>
@@ -216,7 +245,8 @@ export function PackageSelectionTable({
                       <span
                         className={cn(
                           "inline-flex h-5 w-5 items-center justify-center rounded border",
-                          selected && "border-primary bg-primary text-primary-foreground",
+                          selected &&
+                            "border-primary bg-primary text-primary-foreground",
                           row.alreadyAdded && "border-muted bg-muted",
                         )}
                       >
