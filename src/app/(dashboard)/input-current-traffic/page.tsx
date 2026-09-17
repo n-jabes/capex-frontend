@@ -2,7 +2,7 @@ import { Activity, Clock3 } from "lucide-react";
 
 export default function InputCurrentTrafficPage() {
   return (
-    <div className="flex min-h-full items-center justify-center px-4 py-16 md:px-6">
+    <div className="flex h-[calc(100vh-3.5rem)] items-center justify-center px-4 py-16 md:px-6">
       <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border bg-card p-8 text-center shadow-sm">
         <div
           aria-hidden

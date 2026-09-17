@@ -44,7 +44,7 @@ Open `http://localhost:3000`. Run the Nest API on `BACKEND_URL` (default `http:/
 | `/dashboard` | Portfolio overview |
 | `/capex-tree` | Capex hierarchy editor |
 | `/benchmarking` | Price compare across countries, deliveries, packages, etc. |
-| `/benchmarking/traffic` | Input Current Traffic (coming soon) |
+| `/input-current-traffic` | Input Current Traffic (coming soon) |
 | `/settings` | Catalogs and relationships |
 
 Session cookies (`access_token`, `refresh_token`, `capex_auth`) are set by Nest. In interim cross-origin mode they belong to the API host; with same-origin proxy they belong to the Next host.

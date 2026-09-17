@@ -14,10 +14,10 @@ export default function CapexTreePage() {
         right={<SummaryPanel />}
       />
       <div className="flex h-full flex-col lg:hidden">
-        <div className="min-h-[45%] border-b bg-card">
+        <div className="h-[45%] shrink-0 overflow-hidden border-b bg-card">
           <TreeView />
         </div>
-        <div className="min-h-0 flex-1 bg-background">
+        <div className="min-h-0 flex-1 overflow-hidden bg-background">
           <SummaryPanel />
         </div>
       </div>

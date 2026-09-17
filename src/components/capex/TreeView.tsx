@@ -158,8 +158,8 @@ function TreeViewContent() {
   );
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="space-y-3 border-b px-4 py-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 space-y-3 border-b px-4 py-3">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">Network Forecast</h2>
           <p className="text-xs text-muted-foreground">
@@ -238,7 +238,7 @@ function TreeViewContent() {
         </div>
       </div>
 
-      <ScrollArea className="flex-1 px-2 py-2">
+      <ScrollArea className="min-h-0 flex-1 overflow-hidden px-2 py-2">
         {tree.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
             <p className="text-sm text-muted-foreground">

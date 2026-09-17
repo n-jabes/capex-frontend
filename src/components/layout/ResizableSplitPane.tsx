@@ -88,7 +88,7 @@ export function ResizableSplitPane({
     >
       <div
         ref={leftPaneRef}
-        className="min-w-[240px] shrink-0 overflow-hidden border-r bg-card"
+        className="flex min-h-0 min-w-[240px] shrink-0 flex-col overflow-hidden border-r bg-card"
         style={{ width: `${defaultLeftPercent}%` }}
       >
         {left}
