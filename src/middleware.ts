@@ -8,6 +8,7 @@ function isProtectedPath(pathname: string) {
   return (
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/capex-tree") ||
+    pathname.startsWith("/benchmarking") ||
     pathname.startsWith("/settings")
   );
 }
