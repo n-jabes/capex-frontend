@@ -1,15 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Download, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useCapex } from "@/context/CapexContext";
 import { DimensionPicker } from "@/components/benchmarking/DimensionPicker";
 import { BenchmarkItemPicker } from "@/components/benchmarking/BenchmarkItemPicker";
-import { ComparisonMatrix } from "@/components/benchmarking/ComparisonMatrix";
-import { ComparisonBarChart } from "@/components/benchmarking/ComparisonBarChart";
+import { ComparisonResultsView } from "@/components/benchmarking/ComparisonResultsView";
 import {
   buildComparison,
   collectCandidates,
@@ -35,6 +39,7 @@ export function BenchmarkCompareWorkspace() {
   const [baselineId, setBaselineId] = useState<string | null>(null);
   const [sortByPrice, setSortByPrice] = useState(false);
   const [showDeltas, setShowDeltas] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const saved = loadBenchmarkSession();
@@ -167,12 +172,17 @@ export function BenchmarkCompareWorkspace() {
     }
   }, [comparison.columns, baselineId]);
 
+  useEffect(() => {
+    if (selectedIds.length < 2 && expanded) setExpanded(false);
+  }, [selectedIds.length, expanded]);
+
   const handleDimensionChange = (next: BenchmarkDimension) => {
     setDimension(next);
     setSelectedIds([]);
     setLicensePackageFilter("");
     setYearFilter("");
     setBaselineId(null);
+    setExpanded(false);
   };
 
   const exportCsv = () => {
@@ -203,6 +213,20 @@ export function BenchmarkCompareWorkspace() {
       toast.error("Could not copy to clipboard");
     }
   };
+
+  const resultsProps = {
+    comparison,
+    baselineId,
+    onSetBaseline: setBaselineId,
+    showDeltas,
+    onToggleDeltas: () => setShowDeltas((v) => !v),
+    sortByPrice,
+    onToggleSort: () => setSortByPrice((v) => !v),
+    onCopy: () => void copyCsv(),
+    onExport: exportCsv,
+    expanded,
+    onToggleExpand: () => setExpanded((v) => !v),
+  } as const;
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -310,70 +334,52 @@ export function BenchmarkCompareWorkspace() {
           />
         </section>
 
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-medium">3. Compare prices</h2>
-              <p className="text-xs text-muted-foreground">
-                Green = lowest · Amber = highest for numeric rows. Deltas are vs
-                baseline.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Button
-                type="button"
-                variant={sortByPrice ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setSortByPrice((v) => !v)}
-              >
-                <ArrowUpDown className="mr-1.5 h-3.5 w-3.5" />
-                Sort by price
-              </Button>
-              <Button
-                type="button"
-                variant={showDeltas ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setShowDeltas((v) => !v)}
-              >
-                Deltas
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={copyCsv}>
-                <Copy className="mr-1.5 h-3.5 w-3.5" />
-                Copy
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={exportCsv}
-              >
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-                CSV
-              </Button>
-            </div>
-          </div>
-
+        <section className="min-w-0 space-y-4">
           {selectedIds.length < 2 ? (
             <div className="rounded-md border border-dashed px-4 py-16 text-center">
-              <p className="text-sm font-medium">Select a dimension to compare prices</p>
+              <p className="text-sm font-medium">
+                Select a dimension to compare prices
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Choose at least two {dimension.replace(/([A-Z])/g, " $1").toLowerCase()}{" "}
-                to see a side-by-side price matrix.
+                Choose at least two{" "}
+                {dimension.replace(/([A-Z])/g, " $1").toLowerCase()} to see a
+                side-by-side price matrix.
+              </p>
+            </div>
+          ) : expanded ? (
+            <div className="rounded-md border border-dashed px-4 py-16 text-center">
+              <p className="text-sm font-medium">
+                Comparison is open in full screen
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Use Exit full screen or press Esc to return here.
               </p>
             </div>
           ) : (
-            <>
-              <ComparisonMatrix
-                comparison={comparison}
-                baselineId={baselineId}
-                onSetBaseline={setBaselineId}
-                showDeltas={showDeltas}
-              />
-              <ComparisonBarChart comparison={comparison} />
-            </>
+            <ComparisonResultsView {...resultsProps} />
           )}
         </section>
       </div>
+
+      <Dialog open={expanded} onOpenChange={setExpanded}>
+        <DialogContent
+          showCloseButton
+          className="flex h-[min(96vh,100dvh)] w-[min(96vw,100%)] max-w-none translate-x-[-50%] translate-y-[-50%] flex-col gap-3 overflow-hidden p-4 sm:max-w-none md:p-6"
+          aria-describedby="benchmark-expand-desc"
+        >
+          <DialogHeader className="sr-only">
+            <DialogTitle>Full screen price comparison</DialogTitle>
+            <DialogDescription id="benchmark-expand-desc">
+              Expanded comparison matrix. Press Escape or Exit full screen to
+              return.
+            </DialogDescription>
+          </DialogHeader>
+          <ComparisonResultsView
+            {...resultsProps}
+            className="min-h-0 flex-1"
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
