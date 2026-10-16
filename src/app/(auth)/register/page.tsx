@@ -65,8 +65,8 @@ export default function RegisterPage() {
     >
       {pending ? (
         <AuthPendingOverlay
-          title="Provisioning Capex portfolio…"
-          detail="Cloning Capex_1 catalogs and creating your workspace. This can take a few seconds."
+          title="Creating your workspace…"
+          detail="Setting up an empty Capex portfolio for your organization."
         />
       ) : null}
 
@@ -81,7 +81,8 @@ export default function RegisterPage() {
           Create account
         </h1>
         <p className="mt-1.5 text-sm text-[#9bb4bb]">
-          We&apos;ll provision your Capex portfolio from the Capex_1 template.
+          You&apos;ll start with a blank workspace — add catalogs and build your
+          CAPEX tree from Settings.
         </p>
       </div>
 

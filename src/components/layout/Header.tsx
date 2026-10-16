@@ -37,10 +37,16 @@ export function Header() {
     portfolioId,
     portfolioVersion,
     reloadFromServer,
+    flushPendingSaves,
     clearSessionState,
   } = useCapex();
 
   const onLogout = async () => {
+    try {
+      await flushPendingSaves();
+    } catch {
+      // best-effort flush
+    }
     try {
       await logout();
       toast.success("Signed out");
