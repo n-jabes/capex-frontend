@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { confirmDialog, promptDialog } from "@/components/ui/app-dialogs";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -258,10 +259,16 @@ export function BenchmarkCompareWorkspace() {
       toast.error("Saved scenarios require API mode");
       return;
     }
-    const name = window.prompt("Scenario name");
-    if (!name?.trim()) return;
+    const name = await promptDialog({
+      title: "Save scenario",
+      description: "Store this comparison setup for later in your workspace.",
+      label: "Scenario name",
+      placeholder: "e.g. Core vendors Q1",
+      confirmLabel: "Save",
+    });
+    if (!name) return;
     try {
-      const created = await createBenchmarkScenario(name.trim(), currentPayload);
+      const created = await createBenchmarkScenario(name, currentPayload);
       setScenarios((prev) => [created, ...prev]);
       toast.success("Scenario saved");
     } catch {
@@ -316,13 +323,24 @@ export function BenchmarkCompareWorkspace() {
               size="sm"
               variant="ghost"
               onClick={() => {
-                const id = scenarios[0].id;
-                if (!window.confirm(`Delete “${scenarios[0].name}”?`)) return;
-                void deleteBenchmarkScenario(id)
-                  .then(() => {
-                    setScenarios((prev) => prev.filter((s) => s.id !== id));
-                  })
-                  .catch(() => toast.error("Could not delete scenario"));
+                const latest = scenarios[0];
+                void (async () => {
+                  const ok = await confirmDialog({
+                    title: "Delete scenario?",
+                    description: `“${latest.name}” will be removed from this workspace.`,
+                    confirmLabel: "Delete",
+                    tone: "danger",
+                  });
+                  if (!ok) return;
+                  try {
+                    await deleteBenchmarkScenario(latest.id);
+                    setScenarios((prev) =>
+                      prev.filter((s) => s.id !== latest.id),
+                    );
+                  } catch {
+                    toast.error("Could not delete scenario");
+                  }
+                })();
               }}
             >
               Delete latest
