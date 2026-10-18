@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Telecom CAPEX Visibility Platform",
+  title: "CAPEX Visibility Platform | Telecom",
   description:
-    "CAPEX visibility and license utilization platform for telecom operators",
+    "Plan, track, and benchmark telecom CAPEX and license utilization in one place.",
   icons: {
     icon: "/capex logo.png",
     apple: "/capex logo.png",
