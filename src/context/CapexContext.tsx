@@ -29,12 +29,16 @@ import {
   listPortfolios,
   openPortfolio,
   patchMyCatalogs,
-  pollJob,
   putMyCatalogs,
   renameOrganization,
   updatePortfolioTree,
   type PortfolioSummary,
 } from "@/lib/api/capex-api";
+import {
+  subscribeJob,
+  trackJob,
+  waitForTrackedJob,
+} from "@/lib/job-tracker";
 import { isCapexApiConfigured } from "@/lib/api/config";
 import {
   cloneAppSettings,
@@ -338,6 +342,22 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!apiEnabled) return;
     void loadFromApi();
+  }, [apiEnabled, loadFromApi]);
+
+  // After refresh mid-import, resume → when job succeeds, reload workspace.
+  useEffect(() => {
+    if (!apiEnabled) return;
+    let lastHandled: string | null = null;
+    return subscribeJob((job) => {
+      if (
+        job?.type === "import_template" &&
+        job.status === "succeeded" &&
+        job.id !== lastHandled
+      ) {
+        lastHandled = job.id;
+        void loadFromApi();
+      }
+    });
   }, [apiEnabled, loadFromApi]);
 
   useEffect(() => {
@@ -697,13 +717,11 @@ export function CapexProvider({ children }: { children: ReactNode }) {
           replaceTree,
           portfolioId: portfolioIdRef.current ?? undefined,
         });
+        trackJob(queued, "Importing Capex_1…");
         toast.message("Import started", {
-          description: "Running in the background…",
+          description: "Progress is shown under the header (survives refresh).",
         });
-        const finished = await pollJob(queued.id);
-        if (finished.status === "failed") {
-          throw new Error(finished.error || "Import job failed");
-        }
+        await waitForTrackedJob(queued.id);
         await loadFromApi();
         toast.success("Capex_1 template imported");
       } catch (error) {

@@ -14,10 +14,8 @@ import {
 } from "@/components/ui/select";
 import { useCapex } from "@/context/CapexContext";
 import { logout, resendVerification } from "@/lib/api/auth-api";
-import {
-  enqueueExportPortfolioJob,
-  pollJob,
-} from "@/lib/api/capex-api";
+import { enqueueExportPortfolioJob } from "@/lib/api/capex-api";
+import { trackJob, waitForTrackedJob } from "@/lib/job-tracker";
 import { getStoredLocale, t, type Locale } from "@/lib/i18n";
 import { roleLabel } from "@/lib/roles";
 
@@ -175,13 +173,11 @@ export function Header() {
       setExporting(true);
       try {
         toast.message("Export started", {
-          description: "Preparing download…",
+          description: "Progress is shown under the header.",
         });
         const queued = await enqueueExportPortfolioJob({ portfolioId });
-        const finished = await pollJob(queued.id);
-        if (finished.status === "failed") {
-          throw new Error(finished.error || "Export failed");
-        }
+        trackJob(queued, "Preparing export…");
+        const finished = await waitForTrackedJob(queued.id);
         const result = finished.result as {
           filename?: string;
           body?: unknown;
