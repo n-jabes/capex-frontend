@@ -14,7 +14,10 @@ import {
 } from "@/components/ui/select";
 import { useCapex } from "@/context/CapexContext";
 import { logout, resendVerification } from "@/lib/api/auth-api";
-import { enqueueExportPortfolioJob } from "@/lib/api/capex-api";
+import {
+  downloadExportJob,
+  enqueueExportPortfolioJob,
+} from "@/lib/api/capex-api";
 import { trackJob, waitForTrackedJob } from "@/lib/job-tracker";
 import { getStoredLocale, t, type Locale } from "@/lib/i18n";
 import { roleLabel } from "@/lib/roles";
@@ -177,20 +180,12 @@ export function Header() {
         });
         const queued = await enqueueExportPortfolioJob({ portfolioId });
         trackJob(queued, "Preparing export…");
-        const finished = await waitForTrackedJob(queued.id);
-        const result = finished.result as {
-          filename?: string;
-          body?: unknown;
-        } | null;
-        const blob = new Blob([JSON.stringify(result?.body ?? {}, null, 2)], {
-          type: "application/json",
-        });
+        await waitForTrackedJob(queued.id);
+        const { blob, filename } = await downloadExportJob(queued.id);
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
         anchor.href = url;
-        anchor.download =
-          result?.filename ||
-          `capex-portfolio-${portfolioId}-v${portfolioVersion ?? 0}.json`;
+        anchor.download = filename;
         anchor.click();
         URL.revokeObjectURL(url);
         toast.success("Export downloaded");

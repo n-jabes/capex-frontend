@@ -1,4 +1,5 @@
-import { capexFetch } from "@/lib/api/client";
+import { CapexApiError, capexFetch } from "@/lib/api/client";
+import { apiUrl } from "@/lib/api/config";
 import type { AppCatalogs, CatalogRelationships, CapexTreeNode } from "@/types/capex";
 
 export type PortfolioSummary = {
@@ -198,11 +199,40 @@ export function getJob(id: string) {
   return capexFetch<AsyncJob>(`/api/jobs/${id}`);
 }
 
+/** Download export JSON once (does not store the blob in job status polls). */
+export async function downloadExportJob(id: string): Promise<{
+  blob: Blob;
+  filename: string;
+}> {
+  const response = await fetch(apiUrl(`/api/jobs/${id}/download`), {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    let message = `Download failed (${response.status})`;
+    try {
+      const body = (await response.json()) as { message?: string | string[] };
+      if (typeof body.message === "string") message = body.message;
+      else if (Array.isArray(body.message)) message = body.message.join(", ");
+    } catch {
+      // keep default
+    }
+    throw new CapexApiError(message, response.status, null);
+  }
+
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const filename = match?.[1] || `capex-export-${id}.json`;
+  const blob = await response.blob();
+  return { blob, filename };
+}
+
 export async function pollJob(
   id: string,
   opts?: { intervalMs?: number; timeoutMs?: number },
 ): Promise<AsyncJob> {
-  const intervalMs = opts?.intervalMs ?? 400;
+  let intervalMs = opts?.intervalMs ?? 800;
   const timeoutMs = opts?.timeoutMs ?? 120_000;
   const started = Date.now();
   for (;;) {
@@ -212,6 +242,7 @@ export async function pollJob(
       throw new Error("Job timed out");
     }
     await new Promise((r) => setTimeout(r, intervalMs));
+    intervalMs = Math.min(2500, Math.round(intervalMs * 1.5));
   }
 }
 

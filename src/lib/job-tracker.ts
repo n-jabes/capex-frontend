@@ -5,6 +5,11 @@ import {
 
 const STORAGE_KEY = "capex-active-job";
 
+/** Start fast, then back off so imports/exports don't hammer the proxy. */
+const POLL_INITIAL_MS = 800;
+const POLL_MAX_MS = 2500;
+const POLL_GROWTH = 1.5;
+
 export type TrackedJob = {
   id: string;
   type: string;
@@ -19,6 +24,7 @@ type Listener = (job: TrackedJob | null) => void;
 
 let current: TrackedJob | null = null;
 let pollTimer: number | null = null;
+let pollDelayMs = POLL_INITIAL_MS;
 const listeners = new Set<Listener>();
 
 function readStored(): TrackedJob | null {
@@ -55,11 +61,30 @@ function setCurrent(job: TrackedJob | null) {
   emit();
 }
 
-function stopPolling() {
+function clearPollTimer() {
   if (pollTimer != null) {
-    window.clearInterval(pollTimer);
+    window.clearTimeout(pollTimer);
     pollTimer = null;
   }
+}
+
+function stopPolling() {
+  clearPollTimer();
+  pollDelayMs = POLL_INITIAL_MS;
+}
+
+function scheduleNextPoll() {
+  if (typeof window === "undefined" || !current) return;
+  clearPollTimer();
+  const delay = pollDelayMs;
+  pollDelayMs = Math.min(
+    POLL_MAX_MS,
+    Math.round(pollDelayMs * POLL_GROWTH),
+  );
+  pollTimer = window.setTimeout(() => {
+    pollTimer = null;
+    void tick();
+  }, delay);
 }
 
 async function tick() {
@@ -84,18 +109,18 @@ async function tick() {
       window.setTimeout(() => {
         if (current?.id === next.id) setCurrent(null);
       }, 4000);
+      return;
     }
   } catch {
     // transient network — keep polling
   }
+  scheduleNextPoll();
 }
 
 function startPolling() {
   if (pollTimer != null || typeof window === "undefined") return;
+  pollDelayMs = POLL_INITIAL_MS;
   void tick();
-  pollTimer = window.setInterval(() => {
-    void tick();
-  }, 500);
 }
 
 export function subscribeJob(listener: Listener) {
