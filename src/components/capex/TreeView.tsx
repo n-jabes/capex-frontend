@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ClipboardPaste, FoldVertical, Plus } from "lucide-react";
+import { promptDialog } from "@/components/ui/app-dialogs";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -260,9 +261,18 @@ function TreeViewContent() {
                 <Button
                   size="sm"
                   onClick={() => {
-                    const name = window.prompt("Country name");
-                    if (!name?.trim()) return;
-                    addCountry(name.trim());
+                    void (async () => {
+                      const name = await promptDialog({
+                        title: "Add country",
+                        description:
+                          "Create the first country node in your CAPEX tree.",
+                        label: "Country name",
+                        placeholder: "e.g. YAS Madagascar",
+                        confirmLabel: "Add country",
+                      });
+                      if (!name) return;
+                      addCountry(name);
+                    })();
                   }}
                 >
                   <Plus className="mr-1 h-4 w-4" />

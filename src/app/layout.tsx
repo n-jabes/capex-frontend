@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { AppDialogsProvider } from "@/components/ui/app-dialogs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -36,8 +37,10 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <TooltipProvider>
-          {children}
-          <Toaster richColors closeButton position="top-right" />
+          <AppDialogsProvider>
+            {children}
+            <Toaster richColors closeButton position="top-right" />
+          </AppDialogsProvider>
         </TooltipProvider>
       </body>
     </html>
