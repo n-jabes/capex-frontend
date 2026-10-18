@@ -22,13 +22,14 @@ import { getMe } from "@/lib/api/auth-api";
 import {
   clonePortfolio,
   createPortfolio,
+  enqueueImportTemplateJob,
   getMyCatalogs,
   getMyOrganization,
   getPortfolio,
-  importCatalogTemplate,
   listPortfolios,
   openPortfolio,
   patchMyCatalogs,
+  pollJob,
   putMyCatalogs,
   renameOrganization,
   updatePortfolioTree,
@@ -691,27 +692,19 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       }
       setSyncStatus("saving");
       try {
-        const updated = await importCatalogTemplate({
+        const queued = await enqueueImportTemplateJob({
           key: "capex_1",
           replaceTree,
+          portfolioId: portfolioIdRef.current ?? undefined,
         });
-        skipCatalogPersistRef.current = true;
-        const normalized = normalizeSettings(
-          {
-            catalogs: updated.catalogs,
-            relationships: updated.relationships,
-          },
-          { fillDefaultRelationships: false },
-        );
-        setSettingsApi(normalized);
-        lastSyncedSettingsRef.current = cloneAppSettings(normalized);
-        catalogVersionRef.current = updated.version;
-        setCatalogVersion(updated.version);
-        if (replaceTree) {
-          await loadFromApi();
-        } else {
-          setSyncStatus("synced");
+        toast.message("Import started", {
+          description: "Running in the background…",
+        });
+        const finished = await pollJob(queued.id);
+        if (finished.status === "failed") {
+          throw new Error(finished.error || "Import job failed");
         }
+        await loadFromApi();
         toast.success("Capex_1 template imported");
       } catch (error) {
         setSyncStatus("error");

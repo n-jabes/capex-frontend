@@ -163,6 +163,58 @@ export function importCatalogTemplate(body: {
   });
 }
 
+export type AsyncJob = {
+  id: string;
+  type: "import_template" | "export_portfolio" | string;
+  status: "queued" | "running" | "succeeded" | "failed" | string;
+  progress: number;
+  payload: unknown;
+  result: unknown;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+};
+
+export function enqueueImportTemplateJob(body: {
+  key?: string;
+  replaceTree?: boolean;
+  portfolioId?: string;
+}) {
+  return capexFetch<AsyncJob>("/api/jobs/import-template", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function enqueueExportPortfolioJob(body: { portfolioId: string }) {
+  return capexFetch<AsyncJob>("/api/jobs/export-portfolio", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function getJob(id: string) {
+  return capexFetch<AsyncJob>(`/api/jobs/${id}`);
+}
+
+export async function pollJob(
+  id: string,
+  opts?: { intervalMs?: number; timeoutMs?: number },
+): Promise<AsyncJob> {
+  const intervalMs = opts?.intervalMs ?? 400;
+  const timeoutMs = opts?.timeoutMs ?? 120_000;
+  const started = Date.now();
+  for (;;) {
+    const job = await getJob(id);
+    if (job.status === "succeeded" || job.status === "failed") return job;
+    if (Date.now() - started > timeoutMs) {
+      throw new Error("Job timed out");
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
 export type OrgSummary = {
   id: string;
   name: string;

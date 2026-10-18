@@ -14,6 +14,10 @@ import {
 } from "@/components/ui/select";
 import { useCapex } from "@/context/CapexContext";
 import { logout, resendVerification } from "@/lib/api/auth-api";
+import {
+  enqueueExportPortfolioJob,
+  pollJob,
+} from "@/lib/api/capex-api";
 import { getStoredLocale, t, type Locale } from "@/lib/i18n";
 import { roleLabel } from "@/lib/roles";
 
@@ -71,6 +75,7 @@ export function Header() {
 
   const [locale, setLocale] = useState<Locale>("en");
   const [signingOut, setSigningOut] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [badgeVisible, setBadgeVisible] = useState(
     () => syncStatus !== "synced" && syncStatus !== "local",
@@ -145,23 +150,63 @@ export function Header() {
   };
 
   const onExport = () => {
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      portfolioId,
-      portfolioVersion,
-      settings,
-      tree,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `capex-portfolio-${portfolioId ?? "local"}-v${portfolioVersion ?? 0}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    toast.success("Export downloaded");
+    void (async () => {
+      if (!apiEnabled || !portfolioId) {
+        const payload = {
+          exportedAt: new Date().toISOString(),
+          portfolioId,
+          portfolioVersion,
+          settings,
+          tree,
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `capex-portfolio-${portfolioId ?? "local"}-v${portfolioVersion ?? 0}.json`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        toast.success("Export downloaded");
+        return;
+      }
+
+      setExporting(true);
+      try {
+        toast.message("Export started", {
+          description: "Preparing download…",
+        });
+        const queued = await enqueueExportPortfolioJob({ portfolioId });
+        const finished = await pollJob(queued.id);
+        if (finished.status === "failed") {
+          throw new Error(finished.error || "Export failed");
+        }
+        const result = finished.result as {
+          filename?: string;
+          body?: unknown;
+        } | null;
+        const blob = new Blob([JSON.stringify(result?.body ?? {}, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download =
+          result?.filename ||
+          `capex-portfolio-${portfolioId}-v${portfolioVersion ?? 0}.json`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        toast.success("Export downloaded");
+      } catch (error) {
+        toast.error("Export failed", {
+          description:
+            error instanceof Error ? error.message : "Unable to export",
+        });
+      } finally {
+        setExporting(false);
+      }
+    })();
   };
 
   const showBadge =
@@ -288,8 +333,13 @@ export function Header() {
               {membershipRole ? ` · ${roleLabel(membershipRole)}` : ""}
             </Badge>
           ) : null}
-          <Button size="sm" variant="outline" onClick={onExport}>
-            {t("header.export", locale)}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={exporting}
+            onClick={onExport}
+          >
+            {exporting ? "Exporting…" : t("header.export", locale)}
           </Button>
           {showBadge ? (
             <Badge
