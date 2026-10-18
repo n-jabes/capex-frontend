@@ -42,6 +42,7 @@ export function Header() {
     clearSessionState,
     canMutate,
     membershipRole,
+    organizationName,
   } = useCapex();
 
   const onLogout = async () => {
@@ -83,13 +84,21 @@ export function Header() {
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
           CV
         </div>
-        <h1 className="text-base font-semibold tracking-tight">
-          Axian Telecom Capacity and Pricing
-        </h1>
+        <div className="min-w-0">
+          <h1 className="truncate text-base font-semibold tracking-tight">
+            Axian Telecom Capacity and Pricing
+          </h1>
+          {apiEnabled && organizationName ? (
+            <p className="truncate text-xs text-muted-foreground">
+              {organizationName}
+              {membershipRole ? ` · ${roleLabel(membershipRole)}` : ""}
+            </p>
+          ) : null}
+        </div>
       </div>
       <div className="flex max-w-[65%] items-center gap-2">
         {syncError ? (

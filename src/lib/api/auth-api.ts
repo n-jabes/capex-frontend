@@ -8,10 +8,18 @@ export type AuthUser = {
   role: string;
 };
 
-export async function register(email: string, password: string) {
+export async function register(
+  email: string,
+  password: string,
+  inviteToken?: string,
+) {
   return capexFetch<{ user: AuthUser }>("/api/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({
+      email,
+      password,
+      ...(inviteToken ? { inviteToken } : {}),
+    }),
   });
 }
 

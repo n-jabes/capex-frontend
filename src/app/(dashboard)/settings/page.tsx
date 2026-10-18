@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   Boxes,
+  Building2,
   Globe2,
   Link2,
   Network,
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCapex } from "@/context/CapexContext";
+import { OrganizationMembersPanel } from "@/components/settings/OrganizationMembersPanel";
 import { CountriesSection } from "@/components/settings/SettingsSections";
 import {
   PackageCatalogSection,
@@ -31,6 +33,7 @@ import { removeIdFromRelationshipMaps, setRelationshipTargets } from "@/lib/rela
 import type { AppCatalogs, CatalogItem, VendorNodeNameCatalogItem } from "@/types/capex";
 
 type SettingsSectionId =
+  | "organization"
   | "countries"
   | "projectNames"
   | "deliveries"
@@ -45,8 +48,14 @@ const NAV_ITEMS: Array<{
   id: SettingsSectionId;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  group: "tree" | "catalogs" | "mappings";
+  group: "workspace" | "tree" | "catalogs" | "mappings";
 }> = [
+  {
+    id: "organization",
+    label: "Organization",
+    icon: Building2,
+    group: "workspace",
+  },
   { id: "countries", label: "Countries", icon: Globe2, group: "tree" },
   {
     id: "projectNames",
@@ -87,8 +96,9 @@ export default function SettingsPage() {
     membershipRole,
   } = useCapex();
   const readOnly = !canMutate;
-  const [activeSection, setActiveSection] =
-    useState<SettingsSectionId>("countries");
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(
+    apiEnabled ? "organization" : "countries",
+  );
   const [importing, setImporting] = useState(false);
 
   if (!isHydrated) {
@@ -184,6 +194,14 @@ export default function SettingsPage() {
 
   const renderSection = () => {
     switch (activeSection) {
+      case "organization":
+        return apiEnabled ? (
+          <OrganizationMembersPanel />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Organization members require API mode.
+          </p>
+        );
       case "countries":
         return (
           <CountriesSection
@@ -416,16 +434,25 @@ export default function SettingsPage() {
         </div>
 
         <nav className="space-y-4 rounded-lg border bg-card p-2 shadow-sm">
-          {(["tree", "catalogs", "mappings"] as const).map((group) => (
+          {(["workspace", "tree", "catalogs", "mappings"] as const).map((group) => {
+            const items = NAV_ITEMS.filter(
+              (item) =>
+                item.group === group &&
+                (item.id !== "organization" || apiEnabled),
+            );
+            if (items.length === 0) return null;
+            return (
             <div key={group} className="space-y-1">
               <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {group === "tree"
-                  ? "Operational tree"
-                  : group === "catalogs"
-                    ? "Global catalogs"
-                    : "Relationships"}
+                {group === "workspace"
+                  ? "Workspace"
+                  : group === "tree"
+                    ? "Operational tree"
+                    : group === "catalogs"
+                      ? "Global catalogs"
+                      : "Relationships"}
               </p>
-              {NAV_ITEMS.filter((item) => item.group === group).map((item) => {
+              {items.map((item) => {
                 const Icon = item.icon;
                 const active = activeSection === item.id;
                 return (
@@ -446,7 +473,8 @@ export default function SettingsPage() {
                 );
               })}
             </div>
-          ))}
+            );
+          })}
         </nav>
       </aside>
 
@@ -484,9 +512,11 @@ export default function SettingsPage() {
         <div>
           <h3 className="text-lg font-semibold">{activeLabel}</h3>
           <p className="text-sm text-muted-foreground">
-            {activeSection === "relationships"
-              ? "Configure reusable many-to-many mappings between catalog entries."
-              : "Manage catalog entries with search, sort, and pagination."}
+            {activeSection === "organization"
+              ? "Invite teammates and manage member roles for this workspace."
+              : activeSection === "relationships"
+                ? "Configure reusable many-to-many mappings between catalog entries."
+                : "Manage catalog entries with search, sort, and pagination."}
           </p>
         </div>
         {renderSection()}

@@ -21,10 +21,12 @@ import {
 import { getMe } from "@/lib/api/auth-api";
 import {
   getMyCatalogs,
+  getMyOrganization,
   getPortfolio,
   importCatalogTemplate,
   listPortfolios,
   putMyCatalogs,
+  renameOrganization,
   updatePortfolioTree,
 } from "@/lib/api/capex-api";
 import { isCapexApiConfigured } from "@/lib/api/config";
@@ -105,6 +107,8 @@ interface CapexContextValue {
   /** Null in local demo mode. */
   membershipRole: MembershipRole | string | null;
   currentUserEmail: string | null;
+  /** Workspace display name; null in local demo mode. */
+  organizationName: string | null;
   /** False for viewer (API mode). Always true in local demo mode. */
   canMutate: boolean;
   /** Owner/admin only (template import, future org admin). */
@@ -112,6 +116,7 @@ interface CapexContextValue {
   reloadFromServer: () => Promise<void>;
   flushPendingSaves: () => Promise<void>;
   importCapex1Template: (replaceTree?: boolean) => Promise<void>;
+  renameWorkspace: (name: string) => Promise<void>;
   clearSessionState: () => void;
   setSelectedNode: (node: SelectedNode | null) => void;
   addChild: (parentId: string, child: CapexTreeNode) => void;
@@ -205,6 +210,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const [catalogVersion, setCatalogVersion] = useState<number | null>(null);
   const [membershipRole, setMembershipRole] = useState<string | null>(null);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [organizationName, setOrganizationName] = useState<string | null>(null);
 
   const skipPersistRef = useRef(false);
   const skipCatalogPersistRef = useRef(false);
@@ -247,13 +253,15 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     setSyncStatus("loading");
     setSyncError(null);
     try {
-      const [me, summaries, catalogBundle] = await Promise.all([
+      const [me, org, summaries, catalogBundle] = await Promise.all([
         getMe(),
+        getMyOrganization(),
         listPortfolios(),
         getMyCatalogs(),
       ]);
       setMembershipRole(me.role);
       setCurrentUserEmail(me.email);
+      setOrganizationName(org.name);
       membershipRoleRef.current = me.role;
       if (summaries.length === 0) {
         throw new Error(
@@ -642,6 +650,19 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     [apiEnabled, loadFromApi],
   );
 
+  const renameWorkspace = useCallback(
+    async (name: string) => {
+      if (!apiEnabled) return;
+      if (!isOwnerOrAdmin(membershipRoleRef.current)) {
+        toast.error("Only owners or admins can rename the workspace");
+        return;
+      }
+      const updated = await renameOrganization(name);
+      setOrganizationName(updated.name);
+    },
+    [apiEnabled],
+  );
+
   const clearSessionState = useCallback(() => {
     skipPersistRef.current = true;
     skipCatalogPersistRef.current = true;
@@ -652,6 +673,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     setCatalogVersion(null);
     setMembershipRole(null);
     setCurrentUserEmail(null);
+    setOrganizationName(null);
     membershipRoleRef.current = null;
     portfolioIdRef.current = null;
     versionRef.current = null;
@@ -932,11 +954,13 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       apiEnabled,
       membershipRole,
       currentUserEmail,
+      organizationName,
       canMutate,
       canManageOrg,
       reloadFromServer,
       flushPendingSaves,
       importCapex1Template,
+      renameWorkspace,
       clearSessionState,
       setSelectedNode,
       addChild,
@@ -970,11 +994,13 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       apiEnabled,
       membershipRole,
       currentUserEmail,
+      organizationName,
       canMutate,
       canManageOrg,
       reloadFromServer,
       flushPendingSaves,
       importCapex1Template,
+      renameWorkspace,
       clearSessionState,
       setSelectedNode,
       addChild,

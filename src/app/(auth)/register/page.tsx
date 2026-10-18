@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AuthPendingOverlay } from "@/components/auth/AuthPendingOverlay";
 import { PasswordInput } from "@/components/auth/PasswordInput";
@@ -15,12 +16,22 @@ import { redirectAfterAuth } from "@/lib/auth-navigation";
 import { isPasswordValid } from "@/lib/password";
 import { cn } from "@/lib/utils";
 
-export default function RegisterPage() {
+function RegisterForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get("invite")?.trim() || undefined;
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    if (inviteToken) {
+      router.replace(`/invite/${encodeURIComponent(inviteToken)}`);
+    }
+  }, [inviteToken, router]);
 
   const passwordOk = useMemo(() => isPasswordValid(password), [password]);
   const passwordsMatch =
@@ -42,9 +53,11 @@ export default function RegisterPage() {
     setPending(true);
     setError(null);
     try {
-      await register(email, password);
+      await register(email, password, inviteToken);
       toast.success("Account created", {
-        description: "Your Capex portfolio is ready.",
+        description: inviteToken
+          ? "You joined the invited workspace."
+          : "Your Capex portfolio is ready.",
       });
       redirectAfterAuth("/capex-tree");
     } catch (err) {
@@ -57,6 +70,12 @@ export default function RegisterPage() {
       setPending(false);
     }
   };
+
+  if (inviteToken) {
+    return (
+      <p className="text-sm text-[#9bb4bb]">Redirecting to invitation…</p>
+    );
+  }
 
   return (
     <form
@@ -181,5 +200,17 @@ export default function RegisterPage() {
         </Link>
       </p>
     </form>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <p className="text-sm text-[#9bb4bb]">Loading registration…</p>
+      }
+    >
+      <RegisterForm />
+    </Suspense>
   );
 }

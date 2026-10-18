@@ -4,6 +4,12 @@ import type { NextRequest } from "next/server";
 const AUTH_PAGES = ["/login", "/register"];
 const PUBLIC_PATHS = ["/", "/login", "/register"];
 
+function isPublicPath(pathname: string) {
+  return (
+    PUBLIC_PATHS.includes(pathname) || pathname.startsWith("/invite/")
+  );
+}
+
 function isProtectedPath(pathname: string) {
   return (
     pathname.startsWith("/dashboard") ||
@@ -52,7 +58,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (PUBLIC_PATHS.includes(pathname)) {
+  if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 
