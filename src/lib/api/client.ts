@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "@/lib/api/config";
+import { apiUrl, getApiBaseUrl } from "@/lib/api/config";
 
 export class CapexApiError extends Error {
   status: number;
@@ -14,11 +14,11 @@ export class CapexApiError extends Error {
 
 let refreshInFlight: Promise<boolean> | null = null;
 
-async function tryRefresh(baseUrl: string): Promise<boolean> {
+async function tryRefresh(): Promise<boolean> {
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/auth/refresh`, {
+        const response = await fetch(apiUrl("/api/auth/refresh"), {
           method: "POST",
           credentials: "include",
         });
@@ -38,8 +38,7 @@ export async function capexFetch<T>(
   init: RequestInit = {},
   retry = true,
 ): Promise<T> {
-  const baseUrl = getApiBaseUrl();
-  if (!baseUrl) {
+  if (getApiBaseUrl() === null) {
     throw new CapexApiError("Capex API is not configured", 0, null);
   }
 
@@ -48,14 +47,14 @@ export async function capexFetch<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(apiUrl(path), {
     ...init,
     headers,
     credentials: "include",
   });
 
   if (response.status === 401 && retry && !path.startsWith("/api/auth/")) {
-    const refreshed = await tryRefresh(baseUrl);
+    const refreshed = await tryRefresh();
     if (refreshed) {
       return capexFetch<T>(path, init, false);
     }
@@ -72,12 +71,16 @@ export async function capexFetch<T>(
   }
 
   if (!response.ok) {
-    const message =
+    const rawMessage =
       typeof body === "object" &&
       body &&
-      "message" in body &&
-      typeof (body as { message: unknown }).message === "string"
-        ? (body as { message: string }).message
+      "message" in body
+        ? (body as { message: unknown }).message
+        : null;
+    const message = Array.isArray(rawMessage)
+      ? rawMessage.join(", ")
+      : typeof rawMessage === "string"
+        ? rawMessage
         : `Request failed (${response.status})`;
     throw new CapexApiError(message, response.status, body);
   }

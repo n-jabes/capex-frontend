@@ -12,6 +12,8 @@ import {
   Truck,
   Users,
 } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCapex } from "@/context/CapexContext";
 import { CountriesSection } from "@/components/settings/SettingsSections";
@@ -72,10 +74,18 @@ const NAV_ITEMS: Array<{
 ];
 
 export default function SettingsPage() {
-  const { tree, settings, updateSettings, addCountry, isHydrated } =
-    useCapex();
+  const {
+    tree,
+    settings,
+    updateSettings,
+    addCountry,
+    isHydrated,
+    apiEnabled,
+    importCapex1Template,
+  } = useCapex();
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("countries");
+  const [importing, setImporting] = useState(false);
 
   if (!isHydrated) {
     return (
@@ -86,6 +96,30 @@ export default function SettingsPage() {
   }
 
   const { catalogs } = settings;
+  const catalogsEmpty =
+    catalogs.projectNames.length === 0 &&
+    catalogs.deliveries.length === 0 &&
+    catalogs.packages.length === 0;
+
+  const onImportTemplate = async (replaceTree: boolean) => {
+    if (
+      !window.confirm(
+        replaceTree
+          ? "Import Capex_1 catalogs and replace your CAPEX tree with the sample tree? This cannot be undone."
+          : "Import Capex_1 catalogs into this organization? Existing catalog rows will be replaced.",
+      )
+    ) {
+      return;
+    }
+    setImporting(true);
+    try {
+      await importCapex1Template(replaceTree);
+    } catch {
+      toast.error("Could not import Capex_1 template");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const patchCatalog = <K extends keyof AppCatalogs>(
     key: K,
@@ -396,6 +430,36 @@ export default function SettingsPage() {
       </aside>
 
       <main className="min-w-0 flex-1 space-y-4">
+        {apiEnabled ? (
+          <div className="rounded-lg border bg-card p-4 shadow-sm">
+            <h3 className="text-sm font-semibold">Sample data (optional)</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {catalogsEmpty
+                ? "Your catalogs are empty. Import Capex_1 if you want a starter dataset, or build catalogs manually."
+                : "Replace organization catalogs with the Capex_1 template. Owner/admin only."}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={importing}
+                onClick={() => void onImportTemplate(false)}
+              >
+                {importing ? "Importing…" : "Import Capex_1 catalogs"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={importing}
+                onClick={() => void onImportTemplate(true)}
+              >
+                Import catalogs + sample tree
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <div>
           <h3 className="text-lg font-semibold">{activeLabel}</h3>
           <p className="text-sm text-muted-foreground">

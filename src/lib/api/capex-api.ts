@@ -19,6 +19,7 @@ export type PortfolioDetail = PortfolioSummary & {
 export type CatalogsResponse = {
   catalogs: AppCatalogs;
   relationships: CatalogRelationships;
+  version: number;
 };
 
 export function listPortfolios() {
@@ -41,4 +42,25 @@ export function updatePortfolioTree(
 
 export function getMyCatalogs() {
   return capexFetch<CatalogsResponse>("/api/orgs/me/catalogs");
+}
+
+export function putMyCatalogs(body: {
+  catalogs: AppCatalogs;
+  relationships: CatalogRelationships;
+  version: number;
+}) {
+  return capexFetch<CatalogsResponse>("/api/orgs/me/catalogs", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function importCatalogTemplate(body: {
+  key: string;
+  replaceTree?: boolean;
+}) {
+  return capexFetch<CatalogsResponse>("/api/orgs/me/catalogs/import-template", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

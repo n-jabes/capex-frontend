@@ -10,7 +10,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { DEFAULT_APP_SETTINGS } from "@/data/seedCatalogs";
+import {
+  DEFAULT_APP_SETTINGS,
+  EMPTY_APP_SETTINGS,
+} from "@/data/seedCatalogs";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import {
   CapexApiError,
@@ -18,10 +21,13 @@ import {
 import {
   getMyCatalogs,
   getPortfolio,
+  importCatalogTemplate,
   listPortfolios,
+  putMyCatalogs,
   updatePortfolioTree,
 } from "@/lib/api/capex-api";
 import { isCapexApiConfigured } from "@/lib/api/config";
+import { toast } from "sonner";
 import {
   normalizeAppSettings,
   settingsNeedCatalogMigration,
@@ -64,6 +70,7 @@ const TREE_KEY = "capex-tree-data";
 const SETTINGS_KEY = "capex-app-settings";
 const CLIPBOARD_KEY = "capex-tree-clipboard";
 const TREE_SAVE_DEBOUNCE_MS = 800;
+const CATALOG_SAVE_DEBOUNCE_MS = 900;
 
 export type PasteResult =
   | { ok: true; node: CapexTreeNode }
@@ -88,7 +95,11 @@ interface CapexContextValue {
   portfolioId: string | null;
   portfolioVersion: number | null;
   apiEnabled: boolean;
+  catalogVersion: number | null;
   reloadFromServer: () => Promise<void>;
+  flushPendingSaves: () => Promise<void>;
+  importCapex1Template: (replaceTree?: boolean) => Promise<void>;
+  clearSessionState: () => void;
   setSelectedNode: (node: SelectedNode | null) => void;
   addChild: (parentId: string, child: CapexTreeNode) => void;
   renameNode: (id: string, name: string) => void;
@@ -130,10 +141,16 @@ function normalizeTree(nodes: CapexTreeNode[]): CapexTreeNode[] {
   return next;
 }
 
-function normalizeSettings(value: AppSettings): AppSettings {
+function normalizeSettings(
+  value: AppSettings,
+  options?: { fillDefaultRelationships?: boolean },
+): AppSettings {
   let next = value;
   if (settingsNeedCatalogMigration(next)) next = normalizeAppSettings(next);
-  if (relationshipsAreEmpty(next.relationships)) {
+  if (
+    options?.fillDefaultRelationships !== false &&
+    relationshipsAreEmpty(next.relationships)
+  ) {
     next = {
       ...next,
       relationships: withDefaultRelationshipsIfEmpty(next.relationships),
@@ -147,13 +164,15 @@ export function CapexProvider({ children }: { children: ReactNode }) {
 
   const [treeLocal, setTreeLocal, treeHydratedLocal] = useLocalStorage<
     CapexTreeNode[]
-  >(TREE_KEY, createInitialTree());
+  >(TREE_KEY, createInitialTree(), { persist: !apiEnabled });
   const [settingsLocal, setSettingsLocal, settingsHydratedLocal] =
-    useLocalStorage<AppSettings>(SETTINGS_KEY, DEFAULT_APP_SETTINGS);
+    useLocalStorage<AppSettings>(SETTINGS_KEY, DEFAULT_APP_SETTINGS, {
+      persist: !apiEnabled,
+    });
 
-  const [treeApi, setTreeApi] = useState<CapexTreeNode[]>(createInitialTree());
+  const [treeApi, setTreeApi] = useState<CapexTreeNode[]>([]);
   const [settingsApi, setSettingsApi] =
-    useState<AppSettings>(DEFAULT_APP_SETTINGS);
+    useState<AppSettings>(EMPTY_APP_SETTINGS);
   const [apiHydrated, setApiHydrated] = useState(false);
 
   const [selectedNode, setSelectedNode] = useLocalStorage<SelectedNode | null>(
@@ -170,11 +189,19 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [portfolioId, setPortfolioId] = useState<string | null>(null);
   const [portfolioVersion, setPortfolioVersion] = useState<number | null>(null);
+  const [catalogVersion, setCatalogVersion] = useState<number | null>(null);
 
   const skipPersistRef = useRef(false);
+  const skipCatalogPersistRef = useRef(false);
   const versionRef = useRef<number | null>(null);
+  const catalogVersionRef = useRef<number | null>(null);
   const portfolioIdRef = useRef<string | null>(null);
+  const settingsApiRef = useRef(settingsApi);
+  const treeApiRef = useRef(treeApi);
   const saveTimerRef = useRef<number | null>(null);
+  const catalogSaveTimerRef = useRef<number | null>(null);
+  const treeSaveInFlightRef = useRef<Promise<void> | null>(null);
+  const catalogSaveInFlightRef = useRef<Promise<void> | null>(null);
 
   const tree = apiEnabled ? treeApi : treeLocal;
   const settings = apiEnabled ? settingsApi : settingsLocal;
@@ -183,6 +210,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const isHydrated = apiEnabled
     ? apiHydrated
     : treeHydratedLocal && settingsHydratedLocal;
+
+  settingsApiRef.current = settingsApi;
+  treeApiRef.current = treeApi;
 
   const loadFromApi = useCallback(async () => {
     setSyncStatus("loading");
@@ -194,23 +224,29 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       ]);
       if (summaries.length === 0) {
         throw new Error(
-          "No portfolio found. Run backend seed:assign for this user email.",
+          "No portfolio found for this account. Try signing out and registering again.",
         );
       }
       const detail = await getPortfolio(summaries[0].id);
       const rawTree = Array.isArray(detail.tree) ? detail.tree : [];
       skipPersistRef.current = true;
+      skipCatalogPersistRef.current = true;
       setTreeApi(normalizeTree(rawTree));
       setSettingsApi(
-        normalizeSettings({
-          catalogs: catalogBundle.catalogs,
-          relationships: catalogBundle.relationships,
-        }),
+        normalizeSettings(
+          {
+            catalogs: catalogBundle.catalogs,
+            relationships: catalogBundle.relationships,
+          },
+          { fillDefaultRelationships: false },
+        ),
       );
       setPortfolioId(detail.id);
       setPortfolioVersion(detail.version);
+      setCatalogVersion(catalogBundle.version);
       portfolioIdRef.current = detail.id;
       versionRef.current = detail.version;
+      catalogVersionRef.current = catalogBundle.version;
       setApiHydrated(true);
       setSyncStatus("synced");
     } catch (error) {
@@ -306,6 +342,41 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     setSelectedNode,
   ]);
 
+  const persistTreeNow = useCallback(async () => {
+    const id = portfolioIdRef.current;
+    const version = versionRef.current;
+    if (!id || version == null) return;
+    const updated = await updatePortfolioTree(id, {
+      tree: treeApiRef.current,
+      version,
+    });
+    versionRef.current = updated.version;
+    setPortfolioVersion(updated.version);
+  }, []);
+
+  const persistCatalogsNow = useCallback(async () => {
+    const version = catalogVersionRef.current;
+    if (version == null) return;
+    const settingsSnapshot = settingsApiRef.current;
+    const updated = await putMyCatalogs({
+      catalogs: settingsSnapshot.catalogs,
+      relationships: settingsSnapshot.relationships,
+      version,
+    });
+    catalogVersionRef.current = updated.version;
+    setCatalogVersion(updated.version);
+    skipCatalogPersistRef.current = true;
+    setSettingsApi(
+      normalizeSettings(
+        {
+          catalogs: updated.catalogs,
+          relationships: updated.relationships,
+        },
+        { fillDefaultRelationships: false },
+      ),
+    );
+  }, []);
+
   // Debounced tree persistence to API.
   useEffect(() => {
     if (!apiEnabled || !apiHydrated) return;
@@ -321,14 +392,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     setSyncStatus((prev) => (prev === "conflict" ? prev : "saving"));
 
     saveTimerRef.current = window.setTimeout(() => {
-      void (async () => {
+      const run = (async () => {
         try {
-          const updated = await updatePortfolioTree(id, {
-            tree: treeApi,
-            version,
-          });
-          versionRef.current = updated.version;
-          setPortfolioVersion(updated.version);
+          await persistTreeNow();
           setSyncStatus("synced");
           setSyncError(null);
         } catch (error) {
@@ -337,6 +403,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
             setSyncError(
               "This portfolio changed elsewhere. Reloading the latest version.",
             );
+            toast.warning("Version conflict", {
+              description: "Reloaded the latest portfolio from the server.",
+            });
             try {
               const latest = await getPortfolio(id);
               skipPersistRef.current = true;
@@ -360,19 +429,202 @@ export function CapexProvider({ children }: { children: ReactNode }) {
           setSyncError(
             error instanceof Error ? error.message : "Failed to save portfolio",
           );
+          toast.error("Portfolio save failed", {
+            description:
+              error instanceof Error ? error.message : "Unable to sync tree",
+          });
         }
       })();
+      treeSaveInFlightRef.current = run.finally(() => {
+        treeSaveInFlightRef.current = null;
+      });
     }, TREE_SAVE_DEBOUNCE_MS);
 
     return () => {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };
-  }, [apiEnabled, apiHydrated, treeApi]);
+  }, [apiEnabled, apiHydrated, treeApi, persistTreeNow]);
+
+  // Debounced catalog persistence to API.
+  useEffect(() => {
+    if (!apiEnabled || !apiHydrated) return;
+    if (skipCatalogPersistRef.current) {
+      skipCatalogPersistRef.current = false;
+      return;
+    }
+    if (catalogVersionRef.current == null) return;
+
+    if (catalogSaveTimerRef.current) {
+      window.clearTimeout(catalogSaveTimerRef.current);
+    }
+    setSyncStatus((prev) => (prev === "conflict" ? prev : "saving"));
+
+    catalogSaveTimerRef.current = window.setTimeout(() => {
+      const run = (async () => {
+        try {
+          await persistCatalogsNow();
+          setSyncStatus("synced");
+          setSyncError(null);
+        } catch (error) {
+          if (error instanceof CapexApiError && error.status === 409) {
+            setSyncStatus("conflict");
+            setSyncError(
+              "Catalogs changed elsewhere. Reloading the latest version.",
+            );
+            toast.warning("Catalog conflict", {
+              description: "Reloaded catalogs from the server.",
+            });
+            try {
+              const latest = await getMyCatalogs();
+              skipCatalogPersistRef.current = true;
+              setSettingsApi(
+                normalizeSettings(
+                  {
+                    catalogs: latest.catalogs,
+                    relationships: latest.relationships,
+                  },
+                  { fillDefaultRelationships: false },
+                ),
+              );
+              catalogVersionRef.current = latest.version;
+              setCatalogVersion(latest.version);
+            } catch (reloadError) {
+              setSyncStatus("error");
+              setSyncError(
+                reloadError instanceof Error
+                  ? reloadError.message
+                  : "Catalog conflict and reload failed",
+              );
+            }
+            return;
+          }
+          setSyncStatus("error");
+          setSyncError(
+            error instanceof Error ? error.message : "Failed to save catalogs",
+          );
+          toast.error("Settings save failed", {
+            description:
+              error instanceof Error
+                ? error.message
+                : "Unable to sync catalogs",
+          });
+        }
+      })();
+      catalogSaveInFlightRef.current = run.finally(() => {
+        catalogSaveInFlightRef.current = null;
+      });
+    }, CATALOG_SAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (catalogSaveTimerRef.current) {
+        window.clearTimeout(catalogSaveTimerRef.current);
+      }
+    };
+  }, [apiEnabled, apiHydrated, settingsApi, persistCatalogsNow]);
+
+  useEffect(() => {
+    if (!apiEnabled) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (syncStatus === "saving" || syncStatus === "error") {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [apiEnabled, syncStatus]);
 
   const reloadFromServer = useCallback(async () => {
     if (!apiEnabled) return;
     await loadFromApi();
   }, [apiEnabled, loadFromApi]);
+
+  const flushPendingSaves = useCallback(async () => {
+    if (!apiEnabled || !apiHydrated) return;
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (catalogSaveTimerRef.current) {
+      window.clearTimeout(catalogSaveTimerRef.current);
+      catalogSaveTimerRef.current = null;
+    }
+    const pending: Promise<void>[] = [];
+    if (treeSaveInFlightRef.current) pending.push(treeSaveInFlightRef.current);
+    if (catalogSaveInFlightRef.current) {
+      pending.push(catalogSaveInFlightRef.current);
+    }
+    // Flush latest snapshots even if debounce hadn't fired.
+    if (portfolioIdRef.current && versionRef.current != null) {
+      pending.push(persistTreeNow().catch(() => undefined));
+    }
+    if (catalogVersionRef.current != null) {
+      pending.push(persistCatalogsNow().catch(() => undefined));
+    }
+    await Promise.all(pending);
+  }, [apiEnabled, apiHydrated, persistTreeNow, persistCatalogsNow]);
+
+  const importCapex1Template = useCallback(
+    async (replaceTree = false) => {
+      if (!apiEnabled) return;
+      setSyncStatus("saving");
+      try {
+        const updated = await importCatalogTemplate({
+          key: "capex_1",
+          replaceTree,
+        });
+        skipCatalogPersistRef.current = true;
+        setSettingsApi(
+          normalizeSettings(
+            {
+              catalogs: updated.catalogs,
+              relationships: updated.relationships,
+            },
+            { fillDefaultRelationships: false },
+          ),
+        );
+        catalogVersionRef.current = updated.version;
+        setCatalogVersion(updated.version);
+        if (replaceTree) {
+          await loadFromApi();
+        } else {
+          setSyncStatus("synced");
+        }
+        toast.success("Capex_1 template imported");
+      } catch (error) {
+        setSyncStatus("error");
+        const message =
+          error instanceof Error ? error.message : "Import failed";
+        setSyncError(message);
+        toast.error("Import failed", { description: message });
+        throw error;
+      }
+    },
+    [apiEnabled, loadFromApi],
+  );
+
+  const clearSessionState = useCallback(() => {
+    skipPersistRef.current = true;
+    skipCatalogPersistRef.current = true;
+    setTreeApi([]);
+    setSettingsApi(EMPTY_APP_SETTINGS);
+    setPortfolioId(null);
+    setPortfolioVersion(null);
+    setCatalogVersion(null);
+    portfolioIdRef.current = null;
+    versionRef.current = null;
+    catalogVersionRef.current = null;
+    setSelectedNode(null);
+    setClipboard(null);
+    setSyncStatus(apiEnabled ? "loading" : "local");
+    setSyncError(null);
+    setApiHydrated(false);
+    try {
+      sessionStorage.removeItem(CLIPBOARD_KEY);
+    } catch {
+      // ignore
+    }
+  }, [apiEnabled, setSelectedNode]);
 
   const addChild = useCallback(
     (parentId: string, child: CapexTreeNode) => {
@@ -620,8 +872,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       syncError,
       portfolioId,
       portfolioVersion,
+      catalogVersion,
       apiEnabled,
       reloadFromServer,
+      flushPendingSaves,
+      importCapex1Template,
+      clearSessionState,
       setSelectedNode,
       addChild,
       renameNode,
@@ -650,8 +906,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       syncError,
       portfolioId,
       portfolioVersion,
+      catalogVersion,
       apiEnabled,
       reloadFromServer,
+      flushPendingSaves,
+      importCapex1Template,
+      clearSessionState,
       setSelectedNode,
       addChild,
       renameNode,

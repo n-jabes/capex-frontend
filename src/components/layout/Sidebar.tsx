@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   LayoutDashboard,
@@ -16,6 +18,12 @@ import { useState } from "react";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/capex-tree", label: "CAPEX Tree", icon: Network },
+  { href: "/benchmarking", label: "Benchmarking", icon: BarChart3 },
+  {
+    href: "/input-current-traffic",
+    label: "Input Current Traffic",
+    icon: Activity,
+  },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

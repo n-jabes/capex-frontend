@@ -1,10 +1,9 @@
+# Disabled for automatic runs — Vercel Git integration deploys on push.
+# Keep this file for optional manual deploys: Actions → this workflow → Run workflow.
 name: Vercel Production Deployment
 
 on:
-  push:
-    branches:
-      - main  # Triggers the deployment whenever you push or merge into your main branch
-      - staging
+  workflow_dispatch:
 
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}

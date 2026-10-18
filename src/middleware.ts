@@ -8,13 +8,37 @@ function isProtectedPath(pathname: string) {
   return (
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/capex-tree") ||
+    pathname.startsWith("/benchmarking") ||
+    pathname.startsWith("/input-current-traffic") ||
     pathname.startsWith("/settings")
   );
 }
 
+function apiModeEnabled() {
+  // Unset → localStorage demo (no auth gates).
+  return process.env.NEXT_PUBLIC_API_URL !== undefined;
+}
+
+/** True when browser calls this Next host `/api` (cookies are first-party here). */
+function isSameOriginApiMode() {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  if (raw === undefined) return false;
+  const trimmed = raw.trim().replace(/\/$/, "");
+  return (
+    trimmed === "" ||
+    trimmed === "/" ||
+    trimmed.toLowerCase() === "same-origin"
+  );
+}
+
 export function middleware(request: NextRequest) {
-  // Local-only mode (no API URL): skip auth redirects.
-  if (!process.env.NEXT_PUBLIC_API_URL) {
+  if (!apiModeEnabled()) {
+    return NextResponse.next();
+  }
+
+  // Cross-origin (absolute Railway URL): cookies live on the API host.
+  // Next middleware cannot see them — AuthSessionGate enforces routes client-side.
+  if (!isSameOriginApiMode()) {
     return NextResponse.next();
   }
 

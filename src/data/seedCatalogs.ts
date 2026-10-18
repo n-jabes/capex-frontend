@@ -157,3 +157,21 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   catalogs: DEFAULT_CATALOGS,
   relationships: DEFAULT_RELATIONSHIPS,
 };
+
+/** Blank workspace for API-mode orgs (no Capex_1 seed). */
+export const EMPTY_APP_SETTINGS: AppSettings = {
+  catalogs: {
+    projectNames: [],
+    deliveries: [],
+    domains: [],
+    nodes: [],
+    vendors: [],
+    vendorNodeNames: [],
+    packages: [],
+  },
+  relationships: {
+    deliveryDomains: {},
+    domainNodes: {},
+    countryVendors: {},
+  },
+};

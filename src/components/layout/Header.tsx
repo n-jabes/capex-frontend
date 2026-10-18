@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCapex } from "@/context/CapexContext";
@@ -36,14 +37,23 @@ export function Header() {
     portfolioId,
     portfolioVersion,
     reloadFromServer,
+    flushPendingSaves,
+    clearSessionState,
   } = useCapex();
 
   const onLogout = async () => {
     try {
-      await logout();
+      await flushPendingSaves();
     } catch {
-      // clear client route anyway
+      // best-effort flush
     }
+    try {
+      await logout();
+      toast.success("Signed out");
+    } catch {
+      toast.message("Signed out locally");
+    }
+    clearSessionState();
     router.replace("/login");
     router.refresh();
   };
@@ -65,6 +75,7 @@ export function Header() {
     anchor.download = `capex-portfolio-${portfolioId ?? "local"}-v${portfolioVersion ?? 0}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
+    toast.success("Export downloaded");
   };
 
   return (
@@ -90,7 +101,11 @@ export function Header() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => void reloadFromServer()}
+            onClick={() => {
+              void reloadFromServer().then(() =>
+                toast.message("Reloaded from server"),
+              );
+            }}
           >
             Reload
           </Button>
