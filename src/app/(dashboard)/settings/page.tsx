@@ -103,8 +103,15 @@ export default function SettingsPage() {
 
   if (!isHydrated) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
-        Loading settings...
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6 lg:flex-row">
+        <aside className="w-full shrink-0 space-y-2 lg:w-60">
+          <div className="h-6 w-28 animate-pulse rounded bg-muted-foreground/15" />
+          <div className="h-40 animate-pulse rounded-lg border bg-muted-foreground/10" />
+        </aside>
+        <main className="min-w-0 flex-1 space-y-3">
+          <div className="h-5 w-40 animate-pulse rounded bg-muted-foreground/15" />
+          <div className="h-64 animate-pulse rounded-lg border bg-muted-foreground/10" />
+        </main>
       </div>
     );
   }

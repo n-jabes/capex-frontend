@@ -121,7 +121,7 @@ export function OrganizationMembersPanel() {
       `${typeof window !== "undefined" ? window.location.origin : ""}/invite/${invite.token}`;
     try {
       await navigator.clipboard.writeText(url);
-      toast.success("Invite link copied");
+      toast.message("Invite link copied");
     } catch {
       toast.message(url);
     }
@@ -133,7 +133,6 @@ export function OrganizationMembersPanel() {
     setRenaming(true);
     try {
       await renameWorkspace(trimmed);
-      toast.success("Workspace renamed");
     } catch (error) {
       toast.error("Could not rename", {
         description:
@@ -240,7 +239,6 @@ export function OrganizationMembersPanel() {
                                 member.userId,
                                 value as InviteRole,
                               );
-                              toast.success("Role updated");
                               await reload();
                             } catch (error) {
                               toast.error("Could not update role", {
@@ -284,7 +282,6 @@ export function OrganizationMembersPanel() {
                             void (async () => {
                               try {
                                 await removeOrgMember(member.userId);
-                                toast.success("Member removed");
                                 await reload();
                               } catch (error) {
                                 toast.error("Could not remove member", {
@@ -404,7 +401,6 @@ export function OrganizationMembersPanel() {
                                 void (async () => {
                                   try {
                                     await revokeOrgInvitation(invite.id);
-                                    toast.success("Invitation revoked");
                                     await reload();
                                   } catch (error) {
                                     toast.error("Could not revoke", {

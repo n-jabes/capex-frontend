@@ -1,9 +1,9 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
 import { AuthSessionGate } from "@/components/auth/AuthSessionGate";
 import { CapexErrorBoundary } from "@/components/CapexErrorBoundary";
 import { AppShell } from "@/components/layout/AppShell";
+import { DashboardSkeleton } from "@/components/layout/DashboardSkeleton";
 import { CapexProvider, useCapex } from "@/context/CapexContext";
 
 function DashboardGate({ children }: { children: React.ReactNode }) {
@@ -12,12 +12,7 @@ function DashboardGate({ children }: { children: React.ReactNode }) {
 
   if (apiEnabled && (!isHydrated || syncStatus === "loading")) {
     return (
-      <div className="flex h-[calc(100vh-3.5rem)] flex-col items-center justify-center gap-3">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">
-          Loading Capex workspace…
-        </p>
-      </div>
+      <DashboardSkeleton message="Loading Capex workspace…" />
     );
   }
 

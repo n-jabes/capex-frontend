@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -8,16 +9,26 @@ import { useCapex } from "@/context/CapexContext";
 import { logout } from "@/lib/api/auth-api";
 import { roleLabel } from "@/lib/roles";
 
-function syncLabel(status: ReturnType<typeof useCapex>["syncStatus"]) {
+const FLUSH_TIMEOUT_MS = 1500;
+const SYNCED_VISIBLE_MS = 2000;
+
+function formatSavedAt(date: Date) {
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function syncLabel(
+  status: ReturnType<typeof useCapex>["syncStatus"],
+  savedAt: Date | null,
+) {
   switch (status) {
     case "local":
-      return "Local storage";
+      return "Local";
     case "loading":
       return "Loading…";
     case "saving":
       return "Saving…";
     case "synced":
-      return "Synced";
+      return savedAt ? `Saved ${formatSavedAt(savedAt)}` : "Saved";
     case "conflict":
       return "Conflict — reloaded";
     case "error":
@@ -45,18 +56,72 @@ export function Header() {
     organizationName,
   } = useCapex();
 
-  const onLogout = async () => {
-    try {
-      await flushPendingSaves();
-    } catch {
-      // best-effort flush
+  const [signingOut, setSigningOut] = useState(false);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [badgeVisible, setBadgeVisible] = useState(
+    () => syncStatus !== "synced" && syncStatus !== "local",
+  );
+
+  useEffect(() => {
+    if (
+      syncStatus === "saving" ||
+      syncStatus === "loading" ||
+      syncStatus === "error" ||
+      syncStatus === "conflict"
+    ) {
+      setBadgeVisible(true);
+      return;
     }
+
+    if (syncStatus === "synced") {
+      const at = new Date();
+      setSavedAt(at);
+      setBadgeVisible(true);
+      const timer = window.setTimeout(() => {
+        setBadgeVisible(false);
+      }, SYNCED_VISIBLE_MS);
+      return () => window.clearTimeout(timer);
+    }
+
+    // Idle local mode — stay quiet.
+    setBadgeVisible(false);
+  }, [syncStatus]);
+
+  const onLogout = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+
+    let flushTimedOut = false;
+    let flushFinished = false;
+    const flushPromise = flushPendingSaves()
+      .catch(() => undefined)
+      .finally(() => {
+        flushFinished = true;
+      });
+
+    await Promise.race([
+      flushPromise,
+      new Promise<void>((resolve) => {
+        window.setTimeout(() => {
+          if (!flushFinished) flushTimedOut = true;
+          resolve();
+        }, FLUSH_TIMEOUT_MS);
+      }),
+    ]);
+
     try {
       await logout();
       toast.success("Signed out");
     } catch {
       toast.message("Signed out locally");
     }
+
+    if (flushTimedOut) {
+      toast.message("Signed out before all saves finished", {
+        description: "Some recent edits may not have synced.",
+      });
+    }
+
     clearSessionState();
     router.replace("/login");
     router.refresh();
@@ -81,6 +146,13 @@ export function Header() {
     URL.revokeObjectURL(url);
     toast.success("Export downloaded");
   };
+
+  const showBadge =
+    badgeVisible ||
+    syncStatus === "error" ||
+    syncStatus === "conflict" ||
+    syncStatus === "saving" ||
+    syncStatus === "loading";
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-6">
@@ -114,9 +186,7 @@ export function Header() {
             size="sm"
             variant="outline"
             onClick={() => {
-              void reloadFromServer().then(() =>
-                toast.message("Reloaded from server"),
-              );
+              void reloadFromServer();
             }}
           >
             Reload
@@ -130,22 +200,33 @@ export function Header() {
         <Button size="sm" variant="outline" onClick={onExport}>
           Export JSON
         </Button>
-        <Badge
-          variant={
-            syncStatus === "error" || syncStatus === "conflict"
-              ? "destructive"
-              : "secondary"
-          }
-          className="font-normal"
-        >
-          {syncLabel(syncStatus)}
-          {apiEnabled && portfolioVersion != null
-            ? ` · v${portfolioVersion}`
-            : ""}
-        </Badge>
+        {showBadge ? (
+          <Badge
+            variant={
+              syncStatus === "error" || syncStatus === "conflict"
+                ? "destructive"
+                : "secondary"
+            }
+            className="font-normal transition-opacity"
+          >
+            {syncLabel(syncStatus, savedAt)}
+            {apiEnabled &&
+            portfolioVersion != null &&
+            (syncStatus === "saving" ||
+              syncStatus === "error" ||
+              syncStatus === "conflict")
+              ? ` · v${portfolioVersion}`
+              : ""}
+          </Badge>
+        ) : null}
         {apiEnabled ? (
-          <Button size="sm" variant="ghost" onClick={() => void onLogout()}>
-            Sign out
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={signingOut}
+            onClick={() => void onLogout()}
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
           </Button>
         ) : null}
       </div>
