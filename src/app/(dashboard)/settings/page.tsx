@@ -15,6 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/app-dialogs";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCapex } from "@/context/CapexContext";
@@ -132,15 +133,17 @@ export default function SettingsPage() {
     catalogs.packages.length === 0;
 
   const onImportTemplate = async (replaceTree: boolean) => {
-    if (
-      !window.confirm(
-        replaceTree
-          ? "Import Capex_1 catalogs and replace your CAPEX tree with the sample tree? This cannot be undone."
-          : "Import Capex_1 catalogs into this organization? Existing catalog rows will be replaced.",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirmDialog({
+      title: replaceTree
+        ? "Import catalogs and sample tree?"
+        : "Import Capex_1 catalogs?",
+      description: replaceTree
+        ? "This replaces your organization catalogs and CAPEX tree with the Capex_1 sample. This cannot be undone."
+        : "Existing catalog rows in this organization will be replaced with the Capex_1 template.",
+      confirmLabel: replaceTree ? "Import catalogs + tree" : "Import catalogs",
+      tone: "danger",
+    });
+    if (!ok) return;
     setImporting(true);
     try {
       await importCapex1Template(replaceTree);
