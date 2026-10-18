@@ -6,7 +6,7 @@ Next.js application for Axian Telecom Capacity and Pricing—public landing, aut
 
 - Next.js (App Router) + React  
 - Tailwind CSS + shadcn/ui  
-- Cookie-based API session against the Nest backend (cross-origin interim, or same-origin proxy later)
+- Cookie-based API session against Nest via same-origin `/api` rewrite (recommended)
 
 ## Environment
 
@@ -16,13 +16,13 @@ cp .env.example .env.local
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | Yes (API mode) | Absolute Nest URL (interim) **or** `same-origin` (custom domain / proxy later) |
-| `BACKEND_URL` | Only for same-origin | Nest origin used by `next.config` rewrites |
+| `NEXT_PUBLIC_API_URL` | Yes (API mode) | `same-origin` (recommended) **or** absolute Nest URL (legacy) |
+| `BACKEND_URL` | Same-origin mode | Nest origin used by `next.config` rewrites |
 | `NEXT_PUBLIC_SENTRY_DSN` | No | Optional client error reporting hook |
 
-**Interim (no custom domain):** set `NEXT_PUBLIC_API_URL` to the Railway API origin. Nest must allow the Vercel origin in `CORS_ORIGIN` and use `COOKIE_SAMESITE=none`. Route guards run in the client (`AuthSessionGate`) because Vercel middleware cannot read Railway cookies.
+**Recommended (Vercel + Railway):** set `NEXT_PUBLIC_API_URL=same-origin` and `BACKEND_URL=<Railway API>` in the Vercel project (Production + Preview). The browser only talks to the Vercel host; Next rewrites `/api/*` to Nest. Cookies are first-party — set `COOKIE_SAMESITE=lax` on Railway. Middleware can see `capex_auth`. After switching from cross-origin, users must sign in once (old Railway-domain cookies are unused).
 
-**Later (custom domain):** switch to `NEXT_PUBLIC_API_URL=same-origin` + `BACKEND_URL` so cookies are first-party and middleware can enforce them.
+**Legacy cross-origin:** set `NEXT_PUBLIC_API_URL` to the Railway origin and `COOKIE_SAMESITE=none` on Nest. Middleware cannot see those cookies; `AuthSessionGate` enforces routes client-side.
 
 Without `NEXT_PUBLIC_API_URL`, the workspace falls back to browser `localStorage` (local demo only).
 
@@ -33,7 +33,12 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. Run the Nest API on `BACKEND_URL` (default `http://localhost:3001`).
+Open `http://localhost:3000`. Prefer same-origin locally:
+
+```env
+NEXT_PUBLIC_API_URL=same-origin
+BACKEND_URL=http://localhost:3001
+```
 
 ## Main routes
 
@@ -47,4 +52,4 @@ Open `http://localhost:3000`. Run the Nest API on `BACKEND_URL` (default `http:/
 | `/input-current-traffic` | Input Current Traffic (coming soon) |
 | `/settings` | Catalogs and relationships |
 
-Session cookies (`access_token`, `refresh_token`, `capex_auth`) are set by Nest. In interim cross-origin mode they belong to the API host; with same-origin proxy they belong to the Next host.
+Session cookies (`access_token`, `refresh_token`, `capex_auth`) are set by Nest and, in same-origin mode, stored on the Next host.

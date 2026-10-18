@@ -1,8 +1,8 @@
 /**
  * API base URL for browser fetches.
  * - unset → localStorage-only demo mode
- * - "same-origin" / "" / "/" → same-origin `/api` via Next rewrite (custom domain / later)
- * - absolute URL → direct Nest (interim Vercel↔Railway CORS + SameSite=None)
+ * - "same-origin" / "" / "/" → same-origin `/api` via Next rewrite (first-party cookies)
+ * - absolute URL → direct Nest (legacy cross-origin; needs COOKIE_SAMESITE=none)
  */
 export function getApiBaseUrl(): string | null {
   const raw = process.env.NEXT_PUBLIC_API_URL;
