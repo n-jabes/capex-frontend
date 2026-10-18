@@ -68,6 +68,7 @@ interface SimpleCatalogSectionProps {
   onAdd: (item: CatalogItem) => void;
   onUpdate: (id: string, name: string) => void;
   onDelete: (id: string) => void;
+  readOnly?: boolean;
 }
 
 export function SimpleCatalogSection({
@@ -81,6 +82,7 @@ export function SimpleCatalogSection({
   onAdd,
   onUpdate,
   onDelete,
+  readOnly = false,
 }: SimpleCatalogSectionProps) {
   const [addName, setAddName] = useState("");
 
@@ -89,6 +91,7 @@ export function SimpleCatalogSection({
       title={title}
       description={description}
       items={items}
+      readOnly={readOnly}
       columns={[
         {
           key: "name",
@@ -182,6 +185,7 @@ interface VendorNodeNameCatalogSectionProps {
   onAdd: (item: VendorNodeNameCatalogItem) => void;
   onUpdate: (id: string, patch: Partial<VendorNodeNameCatalogItem>) => void;
   onDelete: (id: string) => void;
+  readOnly?: boolean;
 }
 
 export function VendorNodeNameCatalogSection({
@@ -191,6 +195,7 @@ export function VendorNodeNameCatalogSection({
   onAdd,
   onUpdate,
   onDelete,
+  readOnly = false,
 }: VendorNodeNameCatalogSectionProps) {
   const [addName, setAddName] = useState("");
   const [addNodeId, setAddNodeId] = useState(nodes[0]?.id ?? "");
@@ -207,6 +212,7 @@ export function VendorNodeNameCatalogSection({
       title="Vendor Node Names"
       description="Map standard nodes and vendors to vendor-specific node names (e.g. PCC, UNC)."
       items={items}
+      readOnly={readOnly}
       columns={[
         {
           key: "name",
@@ -407,6 +413,7 @@ interface PackageCatalogSectionProps {
   onAdd: (item: PackageCatalogItem) => void;
   onUpdate: (id: string, patch: Partial<PackageCatalogItem>) => void;
   onDelete: (id: string) => void;
+  readOnly?: boolean;
 }
 
 export function PackageCatalogSection({
@@ -416,6 +423,7 @@ export function PackageCatalogSection({
   onAdd,
   onUpdate,
   onDelete,
+  readOnly = false,
 }: PackageCatalogSectionProps) {
   const [form, setForm] = useState({
     name: "",
@@ -445,6 +453,7 @@ export function PackageCatalogSection({
       title="Packages"
       description="Configure license packages with default unit metadata and pricing for CAPEX entry."
       items={items}
+      readOnly={readOnly}
       columns={[
         {
           key: "name",

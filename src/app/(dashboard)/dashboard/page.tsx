@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
 import {
   DollarSign,
@@ -19,31 +20,48 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { DashboardSkeleton } from "@/components/layout/DashboardSkeleton";
 import { useCapex } from "@/context/CapexContext";
 import { computePortfolioStats } from "@/lib/portfolio-stats";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
 
 export default function DashboardPage() {
-  const { tree, isHydrated } = useCapex();
+  const { tree, isHydrated, canMutate, canManageOrg, apiEnabled } = useCapex();
 
   const stats = useMemo(() => computePortfolioStats(tree), [tree]);
 
   if (!isHydrated) {
-    return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
-        Loading dashboard...
-      </div>
-    );
+    return <DashboardSkeleton message="Loading dashboard…" />;
   }
 
   if (stats.countryCount === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-        <h2 className="text-lg font-semibold">Your portfolio is empty</h2>
-        <p className="max-w-md text-sm text-muted-foreground">
-          Add countries and catalogs in Settings, then build your CAPEX tree.
-          Metrics will appear here once you have portfolio data.
-        </p>
+      <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">Your portfolio is empty</h2>
+          <p className="max-w-md text-sm text-muted-foreground">
+            Add a country on the CAPEX tree, or import Capex_1 catalogs from
+            Settings. Metrics appear once you have portfolio data.
+          </p>
+        </div>
+        {canMutate ? (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Link
+              href="/capex-tree"
+              className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/80"
+            >
+              Go to CAPEX tree
+            </Link>
+            <Link
+              href="/settings"
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium hover:bg-muted"
+            >
+              {apiEnabled && canManageOrg
+                ? "Import Capex_1 in Settings"
+                : "Open Settings"}
+            </Link>
+          </div>
+        ) : null}
       </div>
     );
   }

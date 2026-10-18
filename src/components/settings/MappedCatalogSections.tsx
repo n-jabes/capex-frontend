@@ -41,6 +41,7 @@ interface MappedCatalogSectionProps {
     targetIds: string[],
     mappingKey: keyof Pick<CatalogRelationships, "deliveryDomains" | "domainNodes">,
   ) => void;
+  readOnly?: boolean;
 }
 
 export function MappedCatalogSection({
@@ -58,6 +59,7 @@ export function MappedCatalogSection({
   onUpdateCatalog,
   onDeleteCatalog,
   onUpdateMapping,
+  readOnly = false,
 }: MappedCatalogSectionProps) {
   const [filterQuery, setFilterQuery] = useState("");
   const [catalogQuery, setCatalogQuery] = useState("");
@@ -93,7 +95,7 @@ export function MappedCatalogSection({
   }, [catalogItems, catalogQuery]);
 
   const toggleMapping = (catalogId: string) => {
-    if (!activeFilterId) return;
+    if (readOnly || !activeFilterId) return;
     const next = mappedIds.includes(catalogId)
       ? mappedIds.filter((id) => id !== catalogId)
       : [...mappedIds, catalogId];
@@ -143,10 +145,14 @@ export function MappedCatalogSection({
           <h3 className="text-base font-semibold">{title}</h3>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-        <Button size="sm" onClick={openAddDialog}>
-          <Plus className="mr-1 h-4 w-4" />
-          Add {catalogLabel}
-        </Button>
+        {readOnly ? (
+          <span className="text-xs text-muted-foreground">View only</span>
+        ) : (
+          <Button size="sm" onClick={openAddDialog}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add {catalogLabel}
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
@@ -220,12 +226,13 @@ export function MappedCatalogSection({
                     <button
                       type="button"
                       onClick={() => toggleMapping(item.id)}
-                      disabled={!activeFilterId}
+                      disabled={readOnly || !activeFilterId}
                       className={cn(
                         "flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors",
                         mapped
                           ? "border-primary bg-primary text-primary-foreground"
                           : "border-muted-foreground/30",
+                        readOnly && "cursor-default opacity-80",
                       )}
                       aria-label={mapped ? "Unmap" : "Map"}
                     >
@@ -233,19 +240,23 @@ export function MappedCatalogSection({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setEditItem(item)}
+                      onClick={() => {
+                        if (!readOnly) setEditItem(item);
+                      }}
                       className="min-w-0 flex-1 truncate text-left text-sm font-medium"
                     >
                       {item.name}
                     </button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="shrink-0 text-xs text-muted-foreground"
-                      onClick={() => onDeleteCatalog(item.id)}
-                    >
-                      Delete
-                    </Button>
+                    {readOnly ? null : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-xs text-muted-foreground"
+                        onClick={() => onDeleteCatalog(item.id)}
+                      >
+                        Delete
+                      </Button>
+                    )}
                   </div>
                 );
               })
@@ -407,6 +418,7 @@ export function DomainCatalogSection({
   onUpdateDomain,
   onDeleteDomain,
   onUpdateMapping,
+  readOnly = false,
 }: {
   deliveries: CatalogItem[];
   domains: CatalogItem[];
@@ -418,6 +430,7 @@ export function DomainCatalogSection({
     deliveryId: string,
     domainIds: string[],
   ) => void;
+  readOnly?: boolean;
 }) {
   return (
     <MappedCatalogSection
@@ -431,6 +444,7 @@ export function DomainCatalogSection({
       catalogItems={domains}
       mapping={mapping}
       mappingKey="deliveryDomains"
+      readOnly={readOnly}
       onAddCatalog={onAddDomain}
       onUpdateCatalog={onUpdateDomain}
       onDeleteCatalog={onDeleteDomain}
@@ -449,6 +463,7 @@ export function NodeCatalogSection({
   onUpdateNode,
   onDeleteNode,
   onUpdateMapping,
+  readOnly = false,
 }: {
   domains: CatalogItem[];
   nodes: CatalogItem[];
@@ -457,6 +472,7 @@ export function NodeCatalogSection({
   onUpdateNode: (id: string, name: string) => void;
   onDeleteNode: (id: string) => void;
   onUpdateMapping: (domainId: string, nodeIds: string[]) => void;
+  readOnly?: boolean;
 }) {
   return (
     <MappedCatalogSection
@@ -470,6 +486,7 @@ export function NodeCatalogSection({
       catalogItems={nodes}
       mapping={mapping}
       mappingKey="domainNodes"
+      readOnly={readOnly}
       onAddCatalog={onAddNode}
       onUpdateCatalog={onUpdateNode}
       onDeleteCatalog={onDeleteNode}

@@ -83,6 +83,7 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
     pasteBlockReason,
     pasteInto,
     clipboard,
+    canMutate,
   } = useCapex();
   const { isExpanded, setExpanded, collapseNodeToDirectChildren } =
     useTreeExpansion();
@@ -96,11 +97,12 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
 
   const isSelected = selectedNode?.id === node.id;
   const childType = getChildTypeForParent(node.type);
-  const canAddChild = childType !== null;
-  const canRename = node.type !== "package";
-  const canDelete = !["country", "projectName"].includes(node.type);
+  const canAddChild = canMutate && childType !== null;
+  const canRename = canMutate && node.type !== "package";
+  const canDelete =
+    canMutate && !["country", "projectName"].includes(node.type);
   const canCopy = node.type !== "package";
-  const pasteAllowed = canPasteInto(node.id);
+  const pasteAllowed = canMutate && canPasteInto(node.id);
   const pasteReason = pasteBlockReason(node.id);
   const hasChildren = node.children.length > 0;
   const packageCount =
@@ -266,7 +268,7 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
               <MoreHorizontal className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              {node.type === "delivery" && (
+              {canMutate && node.type === "delivery" && (
                 <DropdownMenuItem onClick={() => setWizardOpen(true)}>
                   <Wand2 className="mr-2 h-4 w-4" />
                   Guided CAPEX entry
@@ -290,20 +292,26 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
                   Copy
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem
-                disabled={!pasteAllowed}
-                title={!pasteAllowed ? (pasteReason ?? undefined) : undefined}
-                onClick={handlePaste}
-              >
-                <ClipboardPaste className="mr-2 h-4 w-4" />
-                {clipboard
-                  ? `Paste ${nodeTypeLabel(clipboard.node.type)}`
-                  : "Paste"}
-              </DropdownMenuItem>
-              {!pasteAllowed && clipboard ? (
-                <p className="px-2 pb-1.5 text-[10px] leading-snug text-muted-foreground">
-                  {pasteReason}
-                </p>
+              {canMutate ? (
+                <>
+                  <DropdownMenuItem
+                    disabled={!pasteAllowed}
+                    title={
+                      !pasteAllowed ? (pasteReason ?? undefined) : undefined
+                    }
+                    onClick={handlePaste}
+                  >
+                    <ClipboardPaste className="mr-2 h-4 w-4" />
+                    {clipboard
+                      ? `Paste ${nodeTypeLabel(clipboard.node.type)}`
+                      : "Paste"}
+                  </DropdownMenuItem>
+                  {!pasteAllowed && clipboard ? (
+                    <p className="px-2 pb-1.5 text-[10px] leading-snug text-muted-foreground">
+                      {pasteReason}
+                    </p>
+                  ) : null}
+                </>
               ) : null}
               {canDelete && (
                 <>
@@ -317,6 +325,11 @@ export function TreeNodeItem({ node, depth = 0 }: TreeNodeProps) {
                   </DropdownMenuItem>
                 </>
               )}
+              {!canMutate ? (
+                <p className="px-2 py-1.5 text-[10px] leading-snug text-muted-foreground">
+                  View-only role
+                </p>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

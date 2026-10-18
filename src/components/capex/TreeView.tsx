@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ClipboardPaste, FoldVertical, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,10 @@ function TreeViewContent() {
     canPasteInto,
     pasteInto,
     clipboard,
+    canMutate,
+    canManageOrg,
+    apiEnabled,
+    addCountry,
   } = useCapex();
   const { collapseAllToCountries, setExpanded } = useTreeExpansion();
   const [addDeliveryOpen, setAddDeliveryOpen] = useState(false);
@@ -41,7 +46,7 @@ function TreeViewContent() {
   );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const canPasteCountryAtRoot = canPasteInto(null);
+  const canPasteCountryAtRoot = canMutate && canPasteInto(null);
 
   useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {
@@ -140,8 +145,10 @@ function TreeViewContent() {
 
   if (!isHydrated) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading tree...
+      <div className="flex h-full flex-col gap-3 p-4">
+        <div className="h-4 w-36 animate-pulse rounded bg-muted-foreground/15" />
+        <div className="h-3 w-56 animate-pulse rounded bg-muted-foreground/15" />
+        <div className="mt-2 flex-1 animate-pulse rounded-md bg-muted-foreground/10" />
       </div>
     );
   }
@@ -230,7 +237,7 @@ function TreeViewContent() {
             size="sm"
             variant="outline"
             onClick={() => setAddDeliveryOpen(true)}
-            disabled={!activeProjectName}
+            disabled={!canMutate || !activeProjectName}
           >
             <Plus className="mr-1 h-4 w-4" />
             Add Delivery
@@ -240,11 +247,41 @@ function TreeViewContent() {
 
       <ScrollArea className="min-h-0 flex-1 overflow-hidden px-2 py-2">
         {tree.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <p className="text-sm text-muted-foreground">
-              No countries yet. Add a country in Settings to start building the
-              CAPEX tree.
-            </p>
+          <div className="mx-auto flex max-w-md flex-col items-center justify-center gap-4 py-16 text-center">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Your CAPEX tree is empty</p>
+              <p className="text-sm text-muted-foreground">
+                Start with a country, or import the Capex_1 sample catalogs and
+                tree from Settings.
+              </p>
+            </div>
+            {canMutate ? (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const name = window.prompt("Country name");
+                    if (!name?.trim()) return;
+                    addCountry(name.trim());
+                  }}
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  Add first country
+                </Button>
+                <Link
+                  href="/settings"
+                  className="inline-flex h-7 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium hover:bg-muted"
+                >
+                  {apiEnabled && canManageOrg
+                    ? "Import Capex_1 in Settings"
+                    : "Open Settings"}
+                </Link>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Ask an owner or admin to set up the workspace.
+              </p>
+            )}
           </div>
         ) : !hasDeliveries ? (
           <div className="space-y-4">
@@ -257,7 +294,7 @@ function TreeViewContent() {
                   ? "No project names yet. Use the menu on a country in the tree to add a project name, then add deliveries."
                   : "No deliveries yet. Add your first delivery to start building the CAPEX tree."}
               </p>
-              {activeProjectName && (
+              {canMutate && activeProjectName && (
                 <Button size="sm" onClick={() => setAddDeliveryOpen(true)}>
                   <Plus className="mr-1 h-4 w-4" />
                   Add Delivery

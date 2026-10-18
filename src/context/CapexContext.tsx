@@ -18,15 +18,43 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import {
   CapexApiError,
 } from "@/lib/api/client";
+import { getMe } from "@/lib/api/auth-api";
 import {
+  clonePortfolio,
+  createPortfolio,
+  enqueueImportTemplateJob,
   getMyCatalogs,
+  getMyOrganization,
   getPortfolio,
-  importCatalogTemplate,
   listPortfolios,
+  openPortfolio,
+  patchMyCatalogs,
   putMyCatalogs,
+  renameOrganization,
   updatePortfolioTree,
+  type PortfolioSummary,
 } from "@/lib/api/capex-api";
+import {
+  subscribeJob,
+  trackJob,
+  waitForTrackedJob,
+} from "@/lib/job-tracker";
 import { isCapexApiConfigured } from "@/lib/api/config";
+import {
+  cloneAppSettings,
+  diffCatalogSettings,
+  shouldUseFullCatalogPut,
+} from "@/lib/catalog-diff";
+import {
+  cloneTree,
+  diffCapexTrees,
+  shouldUseFullTreeReplace,
+} from "@/lib/tree-diff";
+import {
+  canMutateWorkspace,
+  isOwnerOrAdmin,
+  type MembershipRole,
+} from "@/lib/roles";
 import { toast } from "sonner";
 import {
   normalizeAppSettings,
@@ -94,11 +122,26 @@ interface CapexContextValue {
   syncError: string | null;
   portfolioId: string | null;
   portfolioVersion: number | null;
+  portfolios: PortfolioSummary[];
   apiEnabled: boolean;
   catalogVersion: number | null;
+  /** Null in local demo mode. */
+  membershipRole: MembershipRole | string | null;
+  currentUserEmail: string | null;
+  emailVerifiedAt: string | null;
+  /** Workspace display name; null in local demo mode. */
+  organizationName: string | null;
+  /** False for viewer (API mode). Always true in local demo mode. */
+  canMutate: boolean;
+  /** Owner/admin only (template import, future org admin). */
+  canManageOrg: boolean;
   reloadFromServer: () => Promise<void>;
   flushPendingSaves: () => Promise<void>;
   importCapex1Template: (replaceTree?: boolean) => Promise<void>;
+  renameWorkspace: (name: string) => Promise<void>;
+  switchPortfolio: (id: string) => Promise<void>;
+  createPortfolioScenario: (name: string) => Promise<void>;
+  cloneActivePortfolio: (name?: string) => Promise<void>;
   clearSessionState: () => void;
   setSelectedNode: (node: SelectedNode | null) => void;
   addChild: (parentId: string, child: CapexTreeNode) => void;
@@ -190,12 +233,22 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const [portfolioId, setPortfolioId] = useState<string | null>(null);
   const [portfolioVersion, setPortfolioVersion] = useState<number | null>(null);
   const [catalogVersion, setCatalogVersion] = useState<number | null>(null);
+  const [membershipRole, setMembershipRole] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null);
+  const [organizationName, setOrganizationName] = useState<string | null>(null);
+  const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
 
   const skipPersistRef = useRef(false);
   const skipCatalogPersistRef = useRef(false);
   const versionRef = useRef<number | null>(null);
   const catalogVersionRef = useRef<number | null>(null);
   const portfolioIdRef = useRef<string | null>(null);
+  const membershipRoleRef = useRef<string | null>(null);
+  /** Last settings successfully synced to API — used for incremental PATCH. */
+  const lastSyncedSettingsRef = useRef<AppSettings | null>(null);
+  /** Last tree successfully synced to API — used for incremental tree ops. */
+  const lastSyncedTreeRef = useRef<CapexTreeNode[] | null>(null);
   const settingsApiRef = useRef(settingsApi);
   const treeApiRef = useRef(treeApi);
   const saveTimerRef = useRef<number | null>(null);
@@ -213,34 +266,62 @@ export function CapexProvider({ children }: { children: ReactNode }) {
 
   settingsApiRef.current = settingsApi;
   treeApiRef.current = treeApi;
+  membershipRoleRef.current = membershipRole;
+
+  const canMutate = !apiEnabled || canMutateWorkspace(membershipRole);
+  const canManageOrg = !apiEnabled || isOwnerOrAdmin(membershipRole);
+
+  const assertCanMutate = useCallback((): boolean => {
+    if (!apiEnabled) return true;
+    if (canMutateWorkspace(membershipRoleRef.current)) return true;
+    toast.error("Read-only workspace", {
+      description: "Your role cannot edit catalogs or the CAPEX tree.",
+    });
+    return false;
+  }, [apiEnabled]);
 
   const loadFromApi = useCallback(async () => {
     setSyncStatus("loading");
     setSyncError(null);
     try {
-      const [summaries, catalogBundle] = await Promise.all([
+      const [me, org, summaries, catalogBundle] = await Promise.all([
+        getMe(),
+        getMyOrganization(),
         listPortfolios(),
         getMyCatalogs(),
       ]);
+      setMembershipRole(me.role);
+      setCurrentUserEmail(me.email);
+      setEmailVerifiedAt(me.emailVerifiedAt ?? null);
+      setOrganizationName(org.name);
+      setPortfolios(summaries);
+      membershipRoleRef.current = me.role;
       if (summaries.length === 0) {
         throw new Error(
           "No portfolio found for this account. Try signing out and registering again.",
         );
       }
-      const detail = await getPortfolio(summaries[0].id);
+      const preferredId =
+        me.lastPortfolioId &&
+        summaries.some((row) => row.id === me.lastPortfolioId)
+          ? me.lastPortfolioId
+          : summaries[0].id;
+      const detail = await getPortfolio(preferredId);
       const rawTree = Array.isArray(detail.tree) ? detail.tree : [];
       skipPersistRef.current = true;
       skipCatalogPersistRef.current = true;
-      setTreeApi(normalizeTree(rawTree));
-      setSettingsApi(
-        normalizeSettings(
-          {
-            catalogs: catalogBundle.catalogs,
-            relationships: catalogBundle.relationships,
-          },
-          { fillDefaultRelationships: false },
-        ),
+      const normalized = normalizeSettings(
+        {
+          catalogs: catalogBundle.catalogs,
+          relationships: catalogBundle.relationships,
+        },
+        { fillDefaultRelationships: false },
       );
+      setSettingsApi(normalized);
+      lastSyncedSettingsRef.current = cloneAppSettings(normalized);
+      const normalizedTree = normalizeTree(rawTree);
+      setTreeApi(normalizedTree);
+      lastSyncedTreeRef.current = cloneTree(normalizedTree);
       setPortfolioId(detail.id);
       setPortfolioVersion(detail.version);
       setCatalogVersion(catalogBundle.version);
@@ -261,6 +342,22 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!apiEnabled) return;
     void loadFromApi();
+  }, [apiEnabled, loadFromApi]);
+
+  // After refresh mid-import, resume → when job succeeds, reload workspace.
+  useEffect(() => {
+    if (!apiEnabled) return;
+    let lastHandled: string | null = null;
+    return subscribeJob((job) => {
+      if (
+        job?.type === "import_template" &&
+        job.status === "succeeded" &&
+        job.id !== lastHandled
+      ) {
+        lastHandled = job.id;
+        void loadFromApi();
+      }
+    });
   }, [apiEnabled, loadFromApi]);
 
   useEffect(() => {
@@ -346,35 +443,73 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     const id = portfolioIdRef.current;
     const version = versionRef.current;
     if (!id || version == null) return;
-    const updated = await updatePortfolioTree(id, {
-      tree: treeApiRef.current,
-      version,
-    });
+    const snapshot = treeApiRef.current;
+    const baseline = lastSyncedTreeRef.current;
+
+    if (!baseline) {
+      const updated = await updatePortfolioTree(id, {
+        tree: snapshot,
+        version,
+      });
+      versionRef.current = updated.version;
+      setPortfolioVersion(updated.version);
+      lastSyncedTreeRef.current = cloneTree(snapshot);
+      return;
+    }
+
+    const ops = diffCapexTrees(baseline, snapshot);
+    if (ops.length === 0) return;
+
+    const updated = await updatePortfolioTree(
+      id,
+      shouldUseFullTreeReplace(ops)
+        ? { tree: snapshot, version }
+        : { ops, version },
+    );
     versionRef.current = updated.version;
     setPortfolioVersion(updated.version);
+    lastSyncedTreeRef.current = cloneTree(snapshot);
   }, []);
 
   const persistCatalogsNow = useCallback(async () => {
     const version = catalogVersionRef.current;
     if (version == null) return;
     const settingsSnapshot = settingsApiRef.current;
-    const updated = await putMyCatalogs({
-      catalogs: settingsSnapshot.catalogs,
-      relationships: settingsSnapshot.relationships,
-      version,
-    });
-    catalogVersionRef.current = updated.version;
-    setCatalogVersion(updated.version);
-    skipCatalogPersistRef.current = true;
-    setSettingsApi(
-      normalizeSettings(
+    const baseline = lastSyncedSettingsRef.current;
+    const ops = baseline
+      ? diffCatalogSettings(baseline, settingsSnapshot)
+      : null;
+
+    // No baseline or a huge delta → full PUT (admin/import-scale writes).
+    const useFullPut = !baseline || !ops || shouldUseFullCatalogPut(ops);
+    if (useFullPut) {
+      if (ops && ops.length === 0) return;
+      const updated = await putMyCatalogs({
+        catalogs: settingsSnapshot.catalogs,
+        relationships: settingsSnapshot.relationships,
+        version,
+      });
+      catalogVersionRef.current = updated.version;
+      setCatalogVersion(updated.version);
+      const normalized = normalizeSettings(
         {
           catalogs: updated.catalogs,
           relationships: updated.relationships,
         },
         { fillDefaultRelationships: false },
-      ),
-    );
+      );
+      lastSyncedSettingsRef.current = cloneAppSettings(normalized);
+      skipCatalogPersistRef.current = true;
+      setSettingsApi(normalized);
+      return;
+    }
+
+    if (ops.length === 0) return;
+
+    const patched = await patchMyCatalogs({ version, ops });
+    catalogVersionRef.current = patched.version;
+    setCatalogVersion(patched.version);
+    lastSyncedSettingsRef.current = cloneAppSettings(settingsSnapshot);
   }, []);
 
   // Debounced tree persistence to API.
@@ -409,9 +544,11 @@ export function CapexProvider({ children }: { children: ReactNode }) {
             try {
               const latest = await getPortfolio(id);
               skipPersistRef.current = true;
-              setTreeApi(
-                normalizeTree(Array.isArray(latest.tree) ? latest.tree : []),
+              const normalizedTree = normalizeTree(
+                Array.isArray(latest.tree) ? latest.tree : [],
               );
+              setTreeApi(normalizedTree);
+              lastSyncedTreeRef.current = cloneTree(normalizedTree);
               versionRef.current = latest.version;
               setPortfolioVersion(latest.version);
               setSyncStatus("conflict");
@@ -477,15 +614,15 @@ export function CapexProvider({ children }: { children: ReactNode }) {
             try {
               const latest = await getMyCatalogs();
               skipCatalogPersistRef.current = true;
-              setSettingsApi(
-                normalizeSettings(
-                  {
-                    catalogs: latest.catalogs,
-                    relationships: latest.relationships,
-                  },
-                  { fillDefaultRelationships: false },
-                ),
+              const normalized = normalizeSettings(
+                {
+                  catalogs: latest.catalogs,
+                  relationships: latest.relationships,
+                },
+                { fillDefaultRelationships: false },
               );
+              setSettingsApi(normalized);
+              lastSyncedSettingsRef.current = cloneAppSettings(normalized);
               catalogVersionRef.current = latest.version;
               setCatalogVersion(latest.version);
             } catch (reloadError) {
@@ -567,29 +704,25 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const importCapex1Template = useCallback(
     async (replaceTree = false) => {
       if (!apiEnabled) return;
+      if (!isOwnerOrAdmin(membershipRoleRef.current)) {
+        toast.error("Permission denied", {
+          description: "Only owners or admins can import Capex_1.",
+        });
+        return;
+      }
       setSyncStatus("saving");
       try {
-        const updated = await importCatalogTemplate({
+        const queued = await enqueueImportTemplateJob({
           key: "capex_1",
           replaceTree,
+          portfolioId: portfolioIdRef.current ?? undefined,
         });
-        skipCatalogPersistRef.current = true;
-        setSettingsApi(
-          normalizeSettings(
-            {
-              catalogs: updated.catalogs,
-              relationships: updated.relationships,
-            },
-            { fillDefaultRelationships: false },
-          ),
-        );
-        catalogVersionRef.current = updated.version;
-        setCatalogVersion(updated.version);
-        if (replaceTree) {
-          await loadFromApi();
-        } else {
-          setSyncStatus("synced");
-        }
+        trackJob(queued, "Importing Capex_1…");
+        toast.message("Import started", {
+          description: "Progress is shown under the header (survives refresh).",
+        });
+        await waitForTrackedJob(queued.id);
+        await loadFromApi();
         toast.success("Capex_1 template imported");
       } catch (error) {
         setSyncStatus("error");
@@ -603,6 +736,72 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     [apiEnabled, loadFromApi],
   );
 
+  const renameWorkspace = useCallback(
+    async (name: string) => {
+      if (!apiEnabled) return;
+      if (!isOwnerOrAdmin(membershipRoleRef.current)) {
+        toast.error("Only owners or admins can rename the workspace");
+        return;
+      }
+      const updated = await renameOrganization(name);
+      setOrganizationName(updated.name);
+    },
+    [apiEnabled],
+  );
+
+  const switchPortfolio = useCallback(
+    async (id: string) => {
+      if (!apiEnabled || !apiHydrated) return;
+      if (id === portfolioIdRef.current) return;
+      await flushPendingSaves();
+      setSyncStatus("loading");
+      try {
+        const detail = await getPortfolio(id);
+        skipPersistRef.current = true;
+        const normalizedTree = normalizeTree(
+          Array.isArray(detail.tree) ? detail.tree : [],
+        );
+        setTreeApi(normalizedTree);
+        lastSyncedTreeRef.current = cloneTree(normalizedTree);
+        setPortfolioId(detail.id);
+        setPortfolioVersion(detail.version);
+        portfolioIdRef.current = detail.id;
+        versionRef.current = detail.version;
+        await openPortfolio(id).catch(() => undefined);
+        setSyncStatus("synced");
+        setSyncError(null);
+      } catch (error) {
+        setSyncStatus("error");
+        setSyncError(
+          error instanceof Error ? error.message : "Could not open portfolio",
+        );
+      }
+    },
+    [apiEnabled, apiHydrated, flushPendingSaves],
+  );
+
+  const createPortfolioScenario = useCallback(
+    async (name: string) => {
+      if (!apiEnabled) return;
+      await flushPendingSaves();
+      const created = await createPortfolio(name);
+      setPortfolios(await listPortfolios());
+      await switchPortfolio(created.id);
+    },
+    [apiEnabled, flushPendingSaves, switchPortfolio],
+  );
+
+  const cloneActivePortfolio = useCallback(
+    async (name?: string) => {
+      if (!apiEnabled || !portfolioIdRef.current) return;
+      await flushPendingSaves();
+      const created = await clonePortfolio(portfolioIdRef.current, name);
+      setPortfolios(await listPortfolios());
+      await switchPortfolio(created.id);
+    },
+    [apiEnabled, flushPendingSaves, switchPortfolio],
+  );
+
   const clearSessionState = useCallback(() => {
     skipPersistRef.current = true;
     skipCatalogPersistRef.current = true;
@@ -611,6 +810,14 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     setPortfolioId(null);
     setPortfolioVersion(null);
     setCatalogVersion(null);
+    setMembershipRole(null);
+    setCurrentUserEmail(null);
+    setEmailVerifiedAt(null);
+    setOrganizationName(null);
+    setPortfolios([]);
+    lastSyncedSettingsRef.current = null;
+    lastSyncedTreeRef.current = null;
+    membershipRoleRef.current = null;
     portfolioIdRef.current = null;
     versionRef.current = null;
     catalogVersionRef.current = null;
@@ -628,13 +835,15 @@ export function CapexProvider({ children }: { children: ReactNode }) {
 
   const addChild = useCallback(
     (parentId: string, child: CapexTreeNode) => {
+      if (!assertCanMutate()) return;
       setTree((prev) => addChildToNode(prev, parentId, child));
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const renameNode = useCallback(
     (id: string, name: string) => {
+      if (!assertCanMutate()) return;
       setTree((prev) =>
         updateNodeInTree(prev, id, (node) => {
           if (node.type === "vendor") {
@@ -645,26 +854,29 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       );
       setSelectedNode((prev) => (prev?.id === id ? { ...prev, name } : prev));
     },
-    [setTree, setSelectedNode],
+    [assertCanMutate, setTree, setSelectedNode],
   );
 
   const deleteNode = useCallback(
     (id: string) => {
+      if (!assertCanMutate()) return;
       setTree((prev) => deleteNodeFromTree(prev, id));
       setSelectedNode((prev) => (prev?.id === id ? null : prev));
     },
-    [setTree, setSelectedNode],
+    [assertCanMutate, setTree, setSelectedNode],
   );
 
   const updateSettings = useCallback(
     (updater: (prev: AppSettings) => AppSettings) => {
+      if (!assertCanMutate()) return;
       setSettings(updater);
     },
-    [setSettings],
+    [assertCanMutate, setSettings],
   );
 
   const addCountry = useCallback(
     (countryName: string) => {
+      if (!assertCanMutate()) return;
       const country: CapexTreeNode = {
         id: generateId(),
         type: "country",
@@ -673,11 +885,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       };
       setTree((prev) => [...prev, country]);
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const updatePackageData = useCallback(
     (nodeId: string, data: PackagePurchaseData) => {
+      if (!assertCanMutate()) return;
       setTree((prev) =>
         updateNodeInTree(prev, nodeId, (node) => ({
           ...node,
@@ -685,12 +898,13 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         })),
       );
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const addChildren = useCallback(
     (parentId: string, children: CapexTreeNode[]) => {
       if (children.length === 0) return;
+      if (!assertCanMutate()) return;
       setTree((prev) => {
         let next = prev;
         for (const child of children) {
@@ -699,11 +913,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const updateVendorNodeLicenseYears = useCallback(
     (vendorNodeNameId: string, licenseYears: LicenseYear[]) => {
+      if (!assertCanMutate()) return;
       setTree((prev) =>
         updateNodeInTree(prev, vendorNodeNameId, (node) => ({
           ...node,
@@ -712,7 +927,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         })),
       );
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const updateLicensePackageData = useCallback(
@@ -721,6 +936,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       packageInstanceId: string,
       data: PackagePurchaseData,
     ) => {
+      if (!assertCanMutate()) return;
       setTree((prev) =>
         updateNodeInTree(prev, vendorNodeNameId, (node) => ({
           ...node,
@@ -735,11 +951,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         })),
       );
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const removeLicensePackage = useCallback(
     (vendorNodeNameId: string, packageInstanceId: string) => {
+      if (!assertCanMutate()) return;
       setTree((prev) =>
         updateNodeInTree(prev, vendorNodeNameId, (node) => ({
           ...node,
@@ -752,11 +969,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         })),
       );
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const updateNodeDiscount = useCallback(
     (nodeId: string, discountPercent: number) => {
+      if (!assertCanMutate()) return;
       const clamped = Math.min(100, Math.max(0, discountPercent));
       setTree((prev) =>
         updateNodeInTree(prev, nodeId, (node) => ({
@@ -765,7 +983,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         })),
       );
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const updateVendorNodeDiscount = updateNodeDiscount;
@@ -837,6 +1055,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
 
   const pasteInto = useCallback(
     (parentId: string | null): PasteResult => {
+      if (!assertCanMutate()) {
+        return { ok: false, reason: "Your role cannot edit this workspace." };
+      }
       if (!clipboard) return { ok: false, reason: "Nothing copied yet." };
 
       const cloned = cloneSubtreeWithNewIds(clipboard.node);
@@ -858,7 +1079,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       setSelectedNode(toSelectedNode(cloned));
       return { ok: true, node: cloned };
     },
-    [clipboard, tree, setTree, setSelectedNode],
+    [assertCanMutate, clipboard, tree, setTree, setSelectedNode],
   );
 
   const value = useMemo(
@@ -872,11 +1093,22 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       syncError,
       portfolioId,
       portfolioVersion,
+      portfolios,
       catalogVersion,
       apiEnabled,
+      membershipRole,
+      currentUserEmail,
+      emailVerifiedAt,
+      organizationName,
+      canMutate,
+      canManageOrg,
       reloadFromServer,
       flushPendingSaves,
       importCapex1Template,
+      renameWorkspace,
+      switchPortfolio,
+      createPortfolioScenario,
+      cloneActivePortfolio,
       clearSessionState,
       setSelectedNode,
       addChild,
@@ -906,11 +1138,22 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       syncError,
       portfolioId,
       portfolioVersion,
+      portfolios,
       catalogVersion,
       apiEnabled,
+      membershipRole,
+      currentUserEmail,
+      emailVerifiedAt,
+      organizationName,
+      canMutate,
+      canManageOrg,
       reloadFromServer,
       flushPendingSaves,
       importCapex1Template,
+      renameWorkspace,
+      switchPortfolio,
+      createPortfolioScenario,
+      cloneActivePortfolio,
       clearSessionState,
       setSelectedNode,
       addChild,

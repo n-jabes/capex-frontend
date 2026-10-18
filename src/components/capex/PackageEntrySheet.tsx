@@ -67,7 +67,7 @@ export function PackageEntrySheet({
   onOpenChange,
   packageNode,
 }: PackageEntrySheetProps) {
-  const { settings, updatePackageData } = useCapex();
+  const { settings, updatePackageData, canMutate } = useCapex();
   const catalogItem = getPackageCatalogItem(settings, packageNode.catalogId);
 
   const [form, setForm] = useState<PackagePurchaseData>(() =>
@@ -104,6 +104,7 @@ export function PackageEntrySheet({
     : undefined;
 
   const handleSave = () => {
+    if (!canMutate) return;
     setShowErrors(true);
     if (!validation.valid) return;
     updatePackageData(packageNode.id, {
@@ -263,9 +264,11 @@ export function PackageEntrySheet({
 
         <SheetFooter className="px-4 pb-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {canMutate ? "Cancel" : "Close"}
           </Button>
-          <Button onClick={handleSave}>Save CAPEX entry</Button>
+          {canMutate ? (
+            <Button onClick={handleSave}>Save CAPEX entry</Button>
+          ) : null}
         </SheetFooter>
       </SheetContent>
     </Sheet>

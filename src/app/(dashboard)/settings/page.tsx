@@ -3,10 +3,12 @@
 import { useState } from "react";
 import {
   Boxes,
+  Building2,
   Globe2,
   Link2,
   Network,
   Package,
+  ScrollText,
   Server,
   Settings2,
   Truck,
@@ -16,6 +18,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCapex } from "@/context/CapexContext";
+import { AuditLogPanel } from "@/components/settings/AuditLogPanel";
+import { OrganizationMembersPanel } from "@/components/settings/OrganizationMembersPanel";
 import { CountriesSection } from "@/components/settings/SettingsSections";
 import {
   PackageCatalogSection,
@@ -31,6 +35,8 @@ import { removeIdFromRelationshipMaps, setRelationshipTargets } from "@/lib/rela
 import type { AppCatalogs, CatalogItem, VendorNodeNameCatalogItem } from "@/types/capex";
 
 type SettingsSectionId =
+  | "organization"
+  | "audit"
   | "countries"
   | "projectNames"
   | "deliveries"
@@ -45,8 +51,20 @@ const NAV_ITEMS: Array<{
   id: SettingsSectionId;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  group: "tree" | "catalogs" | "mappings";
+  group: "workspace" | "tree" | "catalogs" | "mappings";
 }> = [
+  {
+    id: "organization",
+    label: "Organization",
+    icon: Building2,
+    group: "workspace",
+  },
+  {
+    id: "audit",
+    label: "Audit log",
+    icon: ScrollText,
+    group: "workspace",
+  },
   { id: "countries", label: "Countries", icon: Globe2, group: "tree" },
   {
     id: "projectNames",
@@ -82,15 +100,27 @@ export default function SettingsPage() {
     isHydrated,
     apiEnabled,
     importCapex1Template,
+    canMutate,
+    canManageOrg,
+    membershipRole,
   } = useCapex();
-  const [activeSection, setActiveSection] =
-    useState<SettingsSectionId>("countries");
+  const readOnly = !canMutate;
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(
+    apiEnabled ? "organization" : "countries",
+  );
   const [importing, setImporting] = useState(false);
 
   if (!isHydrated) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
-        Loading settings...
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6 lg:flex-row">
+        <aside className="w-full shrink-0 space-y-2 lg:w-60">
+          <div className="h-6 w-28 animate-pulse rounded bg-muted-foreground/15" />
+          <div className="h-40 animate-pulse rounded-lg border bg-muted-foreground/10" />
+        </aside>
+        <main className="min-w-0 flex-1 space-y-3">
+          <div className="h-5 w-40 animate-pulse rounded bg-muted-foreground/15" />
+          <div className="h-64 animate-pulse rounded-lg border bg-muted-foreground/10" />
+        </main>
       </div>
     );
   }
@@ -180,6 +210,22 @@ export default function SettingsPage() {
 
   const renderSection = () => {
     switch (activeSection) {
+      case "organization":
+        return apiEnabled ? (
+          <OrganizationMembersPanel />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Organization members require API mode.
+          </p>
+        );
+      case "audit":
+        return apiEnabled && canManageOrg ? (
+          <AuditLogPanel />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Audit history is available to owners and admins in API mode.
+          </p>
+        );
       case "countries":
         return (
           <CountriesSection
@@ -192,6 +238,7 @@ export default function SettingsPage() {
               })),
             }))}
             onAddCountry={addCountry}
+            readOnly={readOnly}
           />
         );
       case "projectNames":
@@ -204,6 +251,7 @@ export default function SettingsPage() {
             nameLabel="Project name"
             placeholder="e.g. YAS CAPEX"
             idPrefix="proj"
+            readOnly={readOnly}
             onAdd={(item) =>
               patchCatalog("projectNames", (items) => [...items, item])
             }
@@ -225,6 +273,7 @@ export default function SettingsPage() {
             nameLabel="Delivery name"
             placeholder="e.g. Software"
             idPrefix="del"
+            readOnly={readOnly}
             onAdd={(item) =>
               patchCatalog("deliveries", (items) => [...items, item])
             }
@@ -242,6 +291,7 @@ export default function SettingsPage() {
             deliveries={catalogs.deliveries}
             domains={catalogs.domains}
             mapping={settings.relationships.deliveryDomains}
+            readOnly={readOnly}
             onAddDomain={(item) =>
               patchCatalog("domains", (items) => [...items, item])
             }
@@ -269,6 +319,7 @@ export default function SettingsPage() {
             domains={catalogs.domains}
             nodes={catalogs.nodes}
             mapping={settings.relationships.domainNodes}
+            readOnly={readOnly}
             onAddNode={(item) =>
               patchCatalog("nodes", (items) => [...items, item])
             }
@@ -300,6 +351,7 @@ export default function SettingsPage() {
             nameLabel="Vendor name"
             placeholder="e.g. Ericsson"
             idPrefix="vendor"
+            readOnly={readOnly}
             onAdd={(item) =>
               patchCatalog("vendors", (items) => [...items, item])
             }
@@ -317,6 +369,7 @@ export default function SettingsPage() {
             items={catalogs.vendorNodeNames}
             nodes={catalogs.nodes}
             vendors={catalogs.vendors}
+            readOnly={readOnly}
             onAdd={(item) =>
               patchCatalog("vendorNodeNames", (items) => [...items, item])
             }
@@ -340,6 +393,7 @@ export default function SettingsPage() {
             items={catalogs.packages}
             vendorNodeNames={catalogs.vendorNodeNames}
             vendors={catalogs.vendors}
+            readOnly={readOnly}
             onAdd={(item) =>
               patchCatalog("packages", (items) => [...items, item])
             }
@@ -365,6 +419,7 @@ export default function SettingsPage() {
               id: country.id,
               name: country.name,
             }))}
+            readOnly={readOnly}
             onUpdateRelationships={(updater) =>
               patchRelationships(updater)
             }
@@ -391,20 +446,38 @@ export default function SettingsPage() {
           <h2 className="text-xl font-semibold tracking-tight">Settings</h2>
           <p className="text-sm text-muted-foreground">
             ID-based catalogs for the CAPEX platform.
+            {apiEnabled && membershipRole
+              ? ` Role: ${membershipRole}.`
+              : ""}
           </p>
+          {readOnly ? (
+            <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-900 dark:text-amber-100">
+              View-only access — catalog edits are disabled for your role.
+            </p>
+          ) : null}
         </div>
 
         <nav className="space-y-4 rounded-lg border bg-card p-2 shadow-sm">
-          {(["tree", "catalogs", "mappings"] as const).map((group) => (
+          {(["workspace", "tree", "catalogs", "mappings"] as const).map((group) => {
+            const items = NAV_ITEMS.filter(
+              (item) =>
+                item.group === group &&
+                (item.id !== "organization" || apiEnabled) &&
+                (item.id !== "audit" || (apiEnabled && canManageOrg)),
+            );
+            if (items.length === 0) return null;
+            return (
             <div key={group} className="space-y-1">
               <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {group === "tree"
-                  ? "Operational tree"
-                  : group === "catalogs"
-                    ? "Global catalogs"
-                    : "Relationships"}
+                {group === "workspace"
+                  ? "Workspace"
+                  : group === "tree"
+                    ? "Operational tree"
+                    : group === "catalogs"
+                      ? "Global catalogs"
+                      : "Relationships"}
               </p>
-              {NAV_ITEMS.filter((item) => item.group === group).map((item) => {
+              {items.map((item) => {
                 const Icon = item.icon;
                 const active = activeSection === item.id;
                 return (
@@ -425,12 +498,13 @@ export default function SettingsPage() {
                 );
               })}
             </div>
-          ))}
+            );
+          })}
         </nav>
       </aside>
 
       <main className="min-w-0 flex-1 space-y-4">
-        {apiEnabled ? (
+        {apiEnabled && canManageOrg ? (
           <div className="rounded-lg border bg-card p-4 shadow-sm">
             <h3 className="text-sm font-semibold">Sample data (optional)</h3>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -463,9 +537,13 @@ export default function SettingsPage() {
         <div>
           <h3 className="text-lg font-semibold">{activeLabel}</h3>
           <p className="text-sm text-muted-foreground">
-            {activeSection === "relationships"
-              ? "Configure reusable many-to-many mappings between catalog entries."
-              : "Manage catalog entries with search, sort, and pagination."}
+            {activeSection === "organization"
+              ? "Invite teammates and manage member roles for this workspace."
+              : activeSection === "audit"
+                ? "Filterable history of membership, catalog, and tree changes."
+                : activeSection === "relationships"
+                  ? "Configure reusable many-to-many mappings between catalog entries."
+                  : "Manage catalog entries with search, sort, and pagination."}
           </p>
         </div>
         {renderSection()}
