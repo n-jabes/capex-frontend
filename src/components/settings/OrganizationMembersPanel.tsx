@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Copy, Loader2, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/app-dialogs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TablePager, useClientPager } from "@/components/ui/table-pager";
 import { useCapex } from "@/context/CapexContext";
 import { CapexApiError } from "@/lib/api/client";
 import {
@@ -148,6 +150,9 @@ export function OrganizationMembersPanel() {
     }
   };
 
+  const memberPager = useClientPager(members, 10);
+  const invitePager = useClientPager(invites, 10);
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -202,89 +207,48 @@ export function OrganizationMembersPanel() {
         </p>
       </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              {canManageOrg ? (
-                <TableHead className="w-[100px] text-right">Actions</TableHead>
-              ) : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.map((member) => {
-              const isSelf =
-                currentUserEmail?.toLowerCase() === member.email.toLowerCase();
-              const isOwner = member.role === "owner";
-              return (
-                <TableRow key={member.userId}>
-                  <TableCell className="font-medium">
-                    {member.email}
-                    {isSelf ? (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        (you)
-                      </span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    {canManageOrg && !isOwner && !isSelf ? (
-                      <Select
-                        value={member.role}
-                        onValueChange={(value) => {
-                          void (async () => {
-                            try {
-                              await updateOrgMemberRole(
-                                member.userId,
-                                value as InviteRole,
-                              );
-                              await reload();
-                            } catch (error) {
-                              toast.error("Could not update role", {
-                                description:
-                                  error instanceof Error
-                                    ? error.message
-                                    : "Failed",
-                              });
-                            }
-                          })();
-                        }}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="editor">Editor</SelectItem>
-                          <SelectItem value="viewer">Viewer</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      roleLabel(member.role)
-                    )}
-                  </TableCell>
-                  {canManageOrg ? (
-                    <TableCell className="text-right">
-                      {!isOwner && !isSelf ? (
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Remove ${member.email}`}
-                          onClick={() => {
-                            if (
-                              !window.confirm(
-                                `Remove ${member.email} from this workspace?`,
-                              )
-                            ) {
-                              return;
-                            }
+      <div className="space-y-2">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Role</TableHead>
+                {canManageOrg ? (
+                  <TableHead className="w-[100px] text-right">Actions</TableHead>
+                ) : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {memberPager.slice.map((member) => {
+                const isSelf =
+                  currentUserEmail?.toLowerCase() ===
+                  member.email.toLowerCase();
+                const isOwner = member.role === "owner";
+                return (
+                  <TableRow key={member.userId}>
+                    <TableCell className="font-medium">
+                      {member.email}
+                      {isSelf ? (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          (you)
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      {canManageOrg && !isOwner && !isSelf ? (
+                        <Select
+                          value={member.role}
+                          onValueChange={(value) => {
                             void (async () => {
                               try {
-                                await removeOrgMember(member.userId);
+                                await updateOrgMemberRole(
+                                  member.userId,
+                                  value as InviteRole,
+                                );
                                 await reload();
                               } catch (error) {
-                                toast.error("Could not remove member", {
+                                toast.error("Could not update role", {
                                   description:
                                     error instanceof Error
                                       ? error.message
@@ -294,16 +258,70 @@ export function OrganizationMembersPanel() {
                             })();
                           }}
                         >
-                          <Trash2 className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                      ) : null}
+                          <SelectTrigger className="w-[140px]">
+                            <SelectValue>
+                              {roleLabel(member.role)}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="editor">Editor</SelectItem>
+                            <SelectItem value="viewer">Viewer</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        roleLabel(member.role)
+                      )}
                     </TableCell>
-                  ) : null}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                    {canManageOrg ? (
+                      <TableCell className="text-right">
+                        {!isOwner && !isSelf ? (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Remove ${member.email}`}
+                            onClick={() => {
+                              void (async () => {
+                                const ok = await confirmDialog({
+                                  title: "Remove member?",
+                                  description: `${member.email} will lose access to this workspace.`,
+                                  confirmLabel: "Remove",
+                                  tone: "danger",
+                                });
+                                if (!ok) return;
+                                try {
+                                  await removeOrgMember(member.userId);
+                                  await reload();
+                                } catch (error) {
+                                  toast.error("Could not remove member", {
+                                    description:
+                                      error instanceof Error
+                                        ? error.message
+                                        : "Failed",
+                                  });
+                                }
+                              })();
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        <TablePager
+          page={memberPager.page}
+          totalPages={memberPager.totalPages}
+          total={memberPager.total}
+          pageSize={memberPager.pageSize}
+          onPrevious={() => memberPager.setPage((p) => p - 1)}
+          onNext={() => memberPager.setPage((p) => p + 1)}
+        />
       </div>
 
       {canManageOrg ? (
@@ -332,7 +350,7 @@ export function OrganizationMembersPanel() {
                   onValueChange={(value) => setRole(value as InviteRole)}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>{roleLabel(role)}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="admin">Admin</SelectItem>
@@ -363,64 +381,74 @@ export function OrganizationMembersPanel() {
             {invites.length === 0 ? (
               <p className="text-sm text-muted-foreground">No pending invites.</p>
             ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Expires</TableHead>
-                      <TableHead className="w-[100px] text-right">
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {invites.map((invite) => (
-                      <TableRow key={invite.id}>
-                        <TableCell>{invite.email}</TableCell>
-                        <TableCell>{roleLabel(invite.role)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {new Date(invite.expiresAt).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label="Copy invite link"
-                              onClick={() => void onCopyLink(invite)}
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label="Revoke invite"
-                              onClick={() => {
-                                void (async () => {
-                                  try {
-                                    await revokeOrgInvitation(invite.id);
-                                    await reload();
-                                  } catch (error) {
-                                    toast.error("Could not revoke", {
-                                      description:
-                                        error instanceof Error
-                                          ? error.message
-                                          : "Failed",
-                                    });
-                                  }
-                                })();
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          </div>
-                        </TableCell>
+              <div className="space-y-2">
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Expires</TableHead>
+                        <TableHead className="w-[100px] text-right">
+                          Actions
+                        </TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {invitePager.slice.map((invite) => (
+                        <TableRow key={invite.id}>
+                          <TableCell>{invite.email}</TableCell>
+                          <TableCell>{roleLabel(invite.role)}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(invite.expiresAt).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Copy invite link"
+                                onClick={() => void onCopyLink(invite)}
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Revoke invite"
+                                onClick={() => {
+                                  void (async () => {
+                                    try {
+                                      await revokeOrgInvitation(invite.id);
+                                      await reload();
+                                    } catch (error) {
+                                      toast.error("Could not revoke", {
+                                        description:
+                                          error instanceof Error
+                                            ? error.message
+                                            : "Failed",
+                                      });
+                                    }
+                                  })();
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <TablePager
+                  page={invitePager.page}
+                  totalPages={invitePager.totalPages}
+                  total={invitePager.total}
+                  pageSize={invitePager.pageSize}
+                  onPrevious={() => invitePager.setPage((p) => p - 1)}
+                  onNext={() => invitePager.setPage((p) => p + 1)}
+                />
               </div>
             )}
           </div>

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { useCapex } from "@/context/CapexContext";
 import { logout, resendVerification } from "@/lib/api/auth-api";
+import { promptDialog } from "@/components/ui/app-dialogs";
 import {
   downloadExportJob,
   enqueueExportPortfolioJob,
@@ -258,8 +259,11 @@ export function Header() {
                   if (value) void switchPortfolio(value);
                 }}
               >
-                <SelectTrigger className="h-8 w-[160px] text-xs">
-                  <SelectValue placeholder={t("header.portfolio", locale)} />
+                <SelectTrigger className="h-8 w-[180px] text-xs">
+                  <SelectValue placeholder={t("header.portfolio", locale)}>
+                    {portfolios.find((p) => p.id === portfolioId)?.name ??
+                      t("header.portfolio", locale)}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {portfolios.map((p) => (
@@ -275,11 +279,19 @@ export function Header() {
                     size="xs"
                     variant="ghost"
                     onClick={() => {
-                      const name = window.prompt("New portfolio name");
-                      if (!name?.trim()) return;
-                      void createPortfolioScenario(name.trim()).then(() =>
-                        toast.success("Portfolio created"),
-                      );
+                      void (async () => {
+                        const name = await promptDialog({
+                          title: "New portfolio",
+                          description:
+                            "Create an empty portfolio scenario in this workspace.",
+                          label: "Portfolio name",
+                          placeholder: "e.g. 2027 planning",
+                          confirmLabel: "Create",
+                        });
+                        if (!name) return;
+                        await createPortfolioScenario(name);
+                        toast.success("Portfolio created");
+                      })();
                     }}
                   >
                     New
