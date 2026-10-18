@@ -32,7 +32,9 @@ export function getPortfolio(id: string) {
 
 export function updatePortfolioTree(
   id: string,
-  body: { tree: CapexTreeNode[]; version: number },
+  body:
+    | { tree: CapexTreeNode[]; version: number }
+    | { ops: unknown[]; version: number },
 ) {
   return capexFetch<PortfolioDetail>(`/api/portfolios/${id}/tree`, {
     method: "PATCH",
@@ -51,6 +53,26 @@ export function putMyCatalogs(body: {
 }) {
   return capexFetch<CatalogsResponse>("/api/orgs/me/catalogs", {
     method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export type CatalogPatchOp = {
+  op: string;
+  resource?: string;
+  id?: string;
+  item?: Record<string, unknown> | object;
+  relKey?: string;
+  sourceId?: string;
+  targetIds?: string[];
+};
+
+export function patchMyCatalogs(body: {
+  version: number;
+  ops: CatalogPatchOp[];
+}) {
+  return capexFetch<{ version: number }>("/api/orgs/me/catalogs", {
+    method: "PATCH",
     body: JSON.stringify(body),
   });
 }

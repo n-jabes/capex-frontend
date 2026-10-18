@@ -25,11 +25,22 @@ import {
   getPortfolio,
   importCatalogTemplate,
   listPortfolios,
+  patchMyCatalogs,
   putMyCatalogs,
   renameOrganization,
   updatePortfolioTree,
 } from "@/lib/api/capex-api";
 import { isCapexApiConfigured } from "@/lib/api/config";
+import {
+  cloneAppSettings,
+  diffCatalogSettings,
+  shouldUseFullCatalogPut,
+} from "@/lib/catalog-diff";
+import {
+  cloneTree,
+  diffCapexTrees,
+  shouldUseFullTreeReplace,
+} from "@/lib/tree-diff";
 import {
   canMutateWorkspace,
   isOwnerOrAdmin,
@@ -218,6 +229,10 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const catalogVersionRef = useRef<number | null>(null);
   const portfolioIdRef = useRef<string | null>(null);
   const membershipRoleRef = useRef<string | null>(null);
+  /** Last settings successfully synced to API — used for incremental PATCH. */
+  const lastSyncedSettingsRef = useRef<AppSettings | null>(null);
+  /** Last tree successfully synced to API — used for incremental tree ops. */
+  const lastSyncedTreeRef = useRef<CapexTreeNode[] | null>(null);
   const settingsApiRef = useRef(settingsApi);
   const treeApiRef = useRef(treeApi);
   const saveTimerRef = useRef<number | null>(null);
@@ -272,16 +287,18 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       const rawTree = Array.isArray(detail.tree) ? detail.tree : [];
       skipPersistRef.current = true;
       skipCatalogPersistRef.current = true;
-      setTreeApi(normalizeTree(rawTree));
-      setSettingsApi(
-        normalizeSettings(
-          {
-            catalogs: catalogBundle.catalogs,
-            relationships: catalogBundle.relationships,
-          },
-          { fillDefaultRelationships: false },
-        ),
+      const normalized = normalizeSettings(
+        {
+          catalogs: catalogBundle.catalogs,
+          relationships: catalogBundle.relationships,
+        },
+        { fillDefaultRelationships: false },
       );
+      setSettingsApi(normalized);
+      lastSyncedSettingsRef.current = cloneAppSettings(normalized);
+      const normalizedTree = normalizeTree(rawTree);
+      setTreeApi(normalizedTree);
+      lastSyncedTreeRef.current = cloneTree(normalizedTree);
       setPortfolioId(detail.id);
       setPortfolioVersion(detail.version);
       setCatalogVersion(catalogBundle.version);
@@ -387,35 +404,73 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     const id = portfolioIdRef.current;
     const version = versionRef.current;
     if (!id || version == null) return;
-    const updated = await updatePortfolioTree(id, {
-      tree: treeApiRef.current,
-      version,
-    });
+    const snapshot = treeApiRef.current;
+    const baseline = lastSyncedTreeRef.current;
+
+    if (!baseline) {
+      const updated = await updatePortfolioTree(id, {
+        tree: snapshot,
+        version,
+      });
+      versionRef.current = updated.version;
+      setPortfolioVersion(updated.version);
+      lastSyncedTreeRef.current = cloneTree(snapshot);
+      return;
+    }
+
+    const ops = diffCapexTrees(baseline, snapshot);
+    if (ops.length === 0) return;
+
+    const updated = await updatePortfolioTree(
+      id,
+      shouldUseFullTreeReplace(ops)
+        ? { tree: snapshot, version }
+        : { ops, version },
+    );
     versionRef.current = updated.version;
     setPortfolioVersion(updated.version);
+    lastSyncedTreeRef.current = cloneTree(snapshot);
   }, []);
 
   const persistCatalogsNow = useCallback(async () => {
     const version = catalogVersionRef.current;
     if (version == null) return;
     const settingsSnapshot = settingsApiRef.current;
-    const updated = await putMyCatalogs({
-      catalogs: settingsSnapshot.catalogs,
-      relationships: settingsSnapshot.relationships,
-      version,
-    });
-    catalogVersionRef.current = updated.version;
-    setCatalogVersion(updated.version);
-    skipCatalogPersistRef.current = true;
-    setSettingsApi(
-      normalizeSettings(
+    const baseline = lastSyncedSettingsRef.current;
+    const ops = baseline
+      ? diffCatalogSettings(baseline, settingsSnapshot)
+      : null;
+
+    // No baseline or a huge delta → full PUT (admin/import-scale writes).
+    const useFullPut = !baseline || !ops || shouldUseFullCatalogPut(ops);
+    if (useFullPut) {
+      if (ops && ops.length === 0) return;
+      const updated = await putMyCatalogs({
+        catalogs: settingsSnapshot.catalogs,
+        relationships: settingsSnapshot.relationships,
+        version,
+      });
+      catalogVersionRef.current = updated.version;
+      setCatalogVersion(updated.version);
+      const normalized = normalizeSettings(
         {
           catalogs: updated.catalogs,
           relationships: updated.relationships,
         },
         { fillDefaultRelationships: false },
-      ),
-    );
+      );
+      lastSyncedSettingsRef.current = cloneAppSettings(normalized);
+      skipCatalogPersistRef.current = true;
+      setSettingsApi(normalized);
+      return;
+    }
+
+    if (ops.length === 0) return;
+
+    const patched = await patchMyCatalogs({ version, ops });
+    catalogVersionRef.current = patched.version;
+    setCatalogVersion(patched.version);
+    lastSyncedSettingsRef.current = cloneAppSettings(settingsSnapshot);
   }, []);
 
   // Debounced tree persistence to API.
@@ -450,9 +505,11 @@ export function CapexProvider({ children }: { children: ReactNode }) {
             try {
               const latest = await getPortfolio(id);
               skipPersistRef.current = true;
-              setTreeApi(
-                normalizeTree(Array.isArray(latest.tree) ? latest.tree : []),
+              const normalizedTree = normalizeTree(
+                Array.isArray(latest.tree) ? latest.tree : [],
               );
+              setTreeApi(normalizedTree);
+              lastSyncedTreeRef.current = cloneTree(normalizedTree);
               versionRef.current = latest.version;
               setPortfolioVersion(latest.version);
               setSyncStatus("conflict");
@@ -518,15 +575,15 @@ export function CapexProvider({ children }: { children: ReactNode }) {
             try {
               const latest = await getMyCatalogs();
               skipCatalogPersistRef.current = true;
-              setSettingsApi(
-                normalizeSettings(
-                  {
-                    catalogs: latest.catalogs,
-                    relationships: latest.relationships,
-                  },
-                  { fillDefaultRelationships: false },
-                ),
+              const normalized = normalizeSettings(
+                {
+                  catalogs: latest.catalogs,
+                  relationships: latest.relationships,
+                },
+                { fillDefaultRelationships: false },
               );
+              setSettingsApi(normalized);
+              lastSyncedSettingsRef.current = cloneAppSettings(normalized);
               catalogVersionRef.current = latest.version;
               setCatalogVersion(latest.version);
             } catch (reloadError) {
@@ -621,15 +678,15 @@ export function CapexProvider({ children }: { children: ReactNode }) {
           replaceTree,
         });
         skipCatalogPersistRef.current = true;
-        setSettingsApi(
-          normalizeSettings(
-            {
-              catalogs: updated.catalogs,
-              relationships: updated.relationships,
-            },
-            { fillDefaultRelationships: false },
-          ),
+        const normalized = normalizeSettings(
+          {
+            catalogs: updated.catalogs,
+            relationships: updated.relationships,
+          },
+          { fillDefaultRelationships: false },
         );
+        setSettingsApi(normalized);
+        lastSyncedSettingsRef.current = cloneAppSettings(normalized);
         catalogVersionRef.current = updated.version;
         setCatalogVersion(updated.version);
         if (replaceTree) {
@@ -674,6 +731,8 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     setMembershipRole(null);
     setCurrentUserEmail(null);
     setOrganizationName(null);
+    lastSyncedSettingsRef.current = null;
+    lastSyncedTreeRef.current = null;
     membershipRoleRef.current = null;
     portfolioIdRef.current = null;
     versionRef.current = null;
