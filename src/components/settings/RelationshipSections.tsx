@@ -44,6 +44,7 @@ interface SourceTargetMappingEditorProps {
   targets: CatalogItem[];
   mapping: Record<string, string[]>;
   onChange: (sourceId: string, targetIds: string[]) => void;
+  readOnly?: boolean;
 }
 
 export function SourceTargetMappingEditor({
@@ -55,6 +56,7 @@ export function SourceTargetMappingEditor({
   targets,
   mapping,
   onChange,
+  readOnly = false,
 }: SourceTargetMappingEditorProps) {
   const [sourceQuery, setSourceQuery] = useState("");
   const [targetQuery, setTargetQuery] = useState("");
@@ -86,7 +88,7 @@ export function SourceTargetMappingEditor({
   }, [targets, targetQuery]);
 
   const toggleTarget = (targetId: string) => {
-    if (!activeSourceId) return;
+    if (readOnly || !activeSourceId) return;
     const next = selectedTargetIds.includes(targetId)
       ? selectedTargetIds.filter((id) => id !== targetId)
       : [...selectedTargetIds, targetId];
@@ -94,6 +96,7 @@ export function SourceTargetMappingEditor({
   };
 
   const handleCopyFrom = () => {
+    if (readOnly) return;
     if (!activeSourceId || !copySourceId || copySourceId === activeSourceId) {
       return;
     }
@@ -104,7 +107,10 @@ export function SourceTargetMappingEditor({
     <div className="space-y-4 rounded-lg border bg-card p-4 shadow-sm">
       <div>
         <h3 className="text-base font-semibold">{title}</h3>
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <p className="text-sm text-muted-foreground">
+          {description}
+          {readOnly ? " (view only)" : ""}
+        </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
@@ -464,7 +470,8 @@ export function RelationshipMappingsPanel({
   onUpdateRelationships,
   onUpsertVendorNodeName,
   onDeleteVendorNodeName,
-}: RelationshipMappingsPanelProps) {
+  readOnly = false,
+}: RelationshipMappingsPanelProps & { readOnly?: boolean }) {
   const { catalogs, relationships } = settings;
 
   return (
@@ -486,6 +493,7 @@ export function RelationshipMappingsPanel({
             sources={catalogs.deliveries}
             targets={catalogs.domains}
             mapping={relationships.deliveryDomains}
+            readOnly={readOnly}
             onChange={(sourceId, targetIds) =>
               onUpdateRelationships((prev) => ({
                 ...prev,
@@ -508,6 +516,7 @@ export function RelationshipMappingsPanel({
             sources={catalogs.domains}
             targets={catalogs.nodes}
             mapping={relationships.domainNodes}
+            readOnly={readOnly}
             onChange={(sourceId, targetIds) =>
               onUpdateRelationships((prev) => ({
                 ...prev,
@@ -528,8 +537,8 @@ export function RelationshipMappingsPanel({
             vendorNodeNames={catalogs.vendorNodeNames}
             domainNodesMapping={relationships.domainNodes}
             domains={catalogs.domains}
-            onUpsert={onUpsertVendorNodeName}
-            onDelete={onDeleteVendorNodeName}
+            onUpsert={readOnly ? () => undefined : onUpsertVendorNodeName}
+            onDelete={readOnly ? () => undefined : onDeleteVendorNodeName}
           />
         </TabsContent>
 
@@ -542,6 +551,7 @@ export function RelationshipMappingsPanel({
             sources={countries}
             targets={catalogs.vendors}
             mapping={relationships.countryVendors}
+            readOnly={readOnly}
             onChange={(sourceId, targetIds) =>
               onUpdateRelationships((prev) => ({
                 ...prev,

@@ -153,6 +153,7 @@ export function StringListSection({
 export function CountriesSection({
   countries,
   onAddCountry,
+  readOnly = false,
 }: {
   countries: Array<{
     id: string;
@@ -160,6 +161,7 @@ export function CountriesSection({
     projectNames: Array<{ id: string; name: string }>;
   }>;
   onAddCountry: (countryName: string) => void;
+  readOnly?: boolean;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [countryName, setCountryName] = useState("");
@@ -204,10 +206,18 @@ export function CountriesSection({
               </li>
             ))}
           </ul>
-          <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" />
-            Add Country
-          </Button>
+          {readOnly ? (
+            <p className="text-xs text-muted-foreground">View only</p>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDialogOpen(true)}
+            >
+              <Plus className="mr-1 h-4 w-4" />
+              Add Country
+            </Button>
+          )}
         </CardContent>
       </Card>
 

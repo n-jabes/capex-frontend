@@ -18,6 +18,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import {
   CapexApiError,
 } from "@/lib/api/client";
+import { getMe } from "@/lib/api/auth-api";
 import {
   getMyCatalogs,
   getPortfolio,
@@ -27,6 +28,11 @@ import {
   updatePortfolioTree,
 } from "@/lib/api/capex-api";
 import { isCapexApiConfigured } from "@/lib/api/config";
+import {
+  canMutateWorkspace,
+  isOwnerOrAdmin,
+  type MembershipRole,
+} from "@/lib/roles";
 import { toast } from "sonner";
 import {
   normalizeAppSettings,
@@ -96,6 +102,13 @@ interface CapexContextValue {
   portfolioVersion: number | null;
   apiEnabled: boolean;
   catalogVersion: number | null;
+  /** Null in local demo mode. */
+  membershipRole: MembershipRole | string | null;
+  currentUserEmail: string | null;
+  /** False for viewer (API mode). Always true in local demo mode. */
+  canMutate: boolean;
+  /** Owner/admin only (template import, future org admin). */
+  canManageOrg: boolean;
   reloadFromServer: () => Promise<void>;
   flushPendingSaves: () => Promise<void>;
   importCapex1Template: (replaceTree?: boolean) => Promise<void>;
@@ -190,12 +203,15 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const [portfolioId, setPortfolioId] = useState<string | null>(null);
   const [portfolioVersion, setPortfolioVersion] = useState<number | null>(null);
   const [catalogVersion, setCatalogVersion] = useState<number | null>(null);
+  const [membershipRole, setMembershipRole] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
   const skipPersistRef = useRef(false);
   const skipCatalogPersistRef = useRef(false);
   const versionRef = useRef<number | null>(null);
   const catalogVersionRef = useRef<number | null>(null);
   const portfolioIdRef = useRef<string | null>(null);
+  const membershipRoleRef = useRef<string | null>(null);
   const settingsApiRef = useRef(settingsApi);
   const treeApiRef = useRef(treeApi);
   const saveTimerRef = useRef<number | null>(null);
@@ -213,15 +229,32 @@ export function CapexProvider({ children }: { children: ReactNode }) {
 
   settingsApiRef.current = settingsApi;
   treeApiRef.current = treeApi;
+  membershipRoleRef.current = membershipRole;
+
+  const canMutate = !apiEnabled || canMutateWorkspace(membershipRole);
+  const canManageOrg = !apiEnabled || isOwnerOrAdmin(membershipRole);
+
+  const assertCanMutate = useCallback((): boolean => {
+    if (!apiEnabled) return true;
+    if (canMutateWorkspace(membershipRoleRef.current)) return true;
+    toast.error("Read-only workspace", {
+      description: "Your role cannot edit catalogs or the CAPEX tree.",
+    });
+    return false;
+  }, [apiEnabled]);
 
   const loadFromApi = useCallback(async () => {
     setSyncStatus("loading");
     setSyncError(null);
     try {
-      const [summaries, catalogBundle] = await Promise.all([
+      const [me, summaries, catalogBundle] = await Promise.all([
+        getMe(),
         listPortfolios(),
         getMyCatalogs(),
       ]);
+      setMembershipRole(me.role);
+      setCurrentUserEmail(me.email);
+      membershipRoleRef.current = me.role;
       if (summaries.length === 0) {
         throw new Error(
           "No portfolio found for this account. Try signing out and registering again.",
@@ -567,6 +600,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const importCapex1Template = useCallback(
     async (replaceTree = false) => {
       if (!apiEnabled) return;
+      if (!isOwnerOrAdmin(membershipRoleRef.current)) {
+        toast.error("Permission denied", {
+          description: "Only owners or admins can import Capex_1.",
+        });
+        return;
+      }
       setSyncStatus("saving");
       try {
         const updated = await importCatalogTemplate({
@@ -611,6 +650,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     setPortfolioId(null);
     setPortfolioVersion(null);
     setCatalogVersion(null);
+    setMembershipRole(null);
+    setCurrentUserEmail(null);
+    membershipRoleRef.current = null;
     portfolioIdRef.current = null;
     versionRef.current = null;
     catalogVersionRef.current = null;
@@ -628,13 +670,15 @@ export function CapexProvider({ children }: { children: ReactNode }) {
 
   const addChild = useCallback(
     (parentId: string, child: CapexTreeNode) => {
+      if (!assertCanMutate()) return;
       setTree((prev) => addChildToNode(prev, parentId, child));
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const renameNode = useCallback(
     (id: string, name: string) => {
+      if (!assertCanMutate()) return;
       setTree((prev) =>
         updateNodeInTree(prev, id, (node) => {
           if (node.type === "vendor") {
@@ -645,26 +689,29 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       );
       setSelectedNode((prev) => (prev?.id === id ? { ...prev, name } : prev));
     },
-    [setTree, setSelectedNode],
+    [assertCanMutate, setTree, setSelectedNode],
   );
 
   const deleteNode = useCallback(
     (id: string) => {
+      if (!assertCanMutate()) return;
       setTree((prev) => deleteNodeFromTree(prev, id));
       setSelectedNode((prev) => (prev?.id === id ? null : prev));
     },
-    [setTree, setSelectedNode],
+    [assertCanMutate, setTree, setSelectedNode],
   );
 
   const updateSettings = useCallback(
     (updater: (prev: AppSettings) => AppSettings) => {
+      if (!assertCanMutate()) return;
       setSettings(updater);
     },
-    [setSettings],
+    [assertCanMutate, setSettings],
   );
 
   const addCountry = useCallback(
     (countryName: string) => {
+      if (!assertCanMutate()) return;
       const country: CapexTreeNode = {
         id: generateId(),
         type: "country",
@@ -673,11 +720,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       };
       setTree((prev) => [...prev, country]);
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const updatePackageData = useCallback(
     (nodeId: string, data: PackagePurchaseData) => {
+      if (!assertCanMutate()) return;
       setTree((prev) =>
         updateNodeInTree(prev, nodeId, (node) => ({
           ...node,
@@ -685,12 +733,13 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         })),
       );
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const addChildren = useCallback(
     (parentId: string, children: CapexTreeNode[]) => {
       if (children.length === 0) return;
+      if (!assertCanMutate()) return;
       setTree((prev) => {
         let next = prev;
         for (const child of children) {
@@ -699,11 +748,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const updateVendorNodeLicenseYears = useCallback(
     (vendorNodeNameId: string, licenseYears: LicenseYear[]) => {
+      if (!assertCanMutate()) return;
       setTree((prev) =>
         updateNodeInTree(prev, vendorNodeNameId, (node) => ({
           ...node,
@@ -712,7 +762,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         })),
       );
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const updateLicensePackageData = useCallback(
@@ -721,6 +771,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       packageInstanceId: string,
       data: PackagePurchaseData,
     ) => {
+      if (!assertCanMutate()) return;
       setTree((prev) =>
         updateNodeInTree(prev, vendorNodeNameId, (node) => ({
           ...node,
@@ -735,11 +786,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         })),
       );
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const removeLicensePackage = useCallback(
     (vendorNodeNameId: string, packageInstanceId: string) => {
+      if (!assertCanMutate()) return;
       setTree((prev) =>
         updateNodeInTree(prev, vendorNodeNameId, (node) => ({
           ...node,
@@ -752,11 +804,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         })),
       );
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const updateNodeDiscount = useCallback(
     (nodeId: string, discountPercent: number) => {
+      if (!assertCanMutate()) return;
       const clamped = Math.min(100, Math.max(0, discountPercent));
       setTree((prev) =>
         updateNodeInTree(prev, nodeId, (node) => ({
@@ -765,7 +818,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
         })),
       );
     },
-    [setTree],
+    [assertCanMutate, setTree],
   );
 
   const updateVendorNodeDiscount = updateNodeDiscount;
@@ -837,6 +890,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
 
   const pasteInto = useCallback(
     (parentId: string | null): PasteResult => {
+      if (!assertCanMutate()) {
+        return { ok: false, reason: "Your role cannot edit this workspace." };
+      }
       if (!clipboard) return { ok: false, reason: "Nothing copied yet." };
 
       const cloned = cloneSubtreeWithNewIds(clipboard.node);
@@ -858,7 +914,7 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       setSelectedNode(toSelectedNode(cloned));
       return { ok: true, node: cloned };
     },
-    [clipboard, tree, setTree, setSelectedNode],
+    [assertCanMutate, clipboard, tree, setTree, setSelectedNode],
   );
 
   const value = useMemo(
@@ -874,6 +930,10 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       portfolioVersion,
       catalogVersion,
       apiEnabled,
+      membershipRole,
+      currentUserEmail,
+      canMutate,
+      canManageOrg,
       reloadFromServer,
       flushPendingSaves,
       importCapex1Template,
@@ -908,6 +968,10 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       portfolioVersion,
       catalogVersion,
       apiEnabled,
+      membershipRole,
+      currentUserEmail,
+      canMutate,
+      canManageOrg,
       reloadFromServer,
       flushPendingSaves,
       importCapex1Template,

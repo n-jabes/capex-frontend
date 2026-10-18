@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCapex } from "@/context/CapexContext";
 import { logout } from "@/lib/api/auth-api";
+import { roleLabel } from "@/lib/roles";
 
 function syncLabel(status: ReturnType<typeof useCapex>["syncStatus"]) {
   switch (status) {
@@ -39,6 +40,8 @@ export function Header() {
     reloadFromServer,
     flushPendingSaves,
     clearSessionState,
+    canMutate,
+    membershipRole,
   } = useCapex();
 
   const onLogout = async () => {
@@ -109,6 +112,11 @@ export function Header() {
           >
             Reload
           </Button>
+        ) : null}
+        {apiEnabled && !canMutate ? (
+          <Badge variant="outline" className="font-normal text-amber-700">
+            Read-only{membershipRole ? ` · ${roleLabel(membershipRole)}` : ""}
+          </Badge>
         ) : null}
         <Button size="sm" variant="outline" onClick={onExport}>
           Export JSON

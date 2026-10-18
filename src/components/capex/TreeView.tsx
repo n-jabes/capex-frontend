@@ -33,6 +33,7 @@ function TreeViewContent() {
     canPasteInto,
     pasteInto,
     clipboard,
+    canMutate,
   } = useCapex();
   const { collapseAllToCountries, setExpanded } = useTreeExpansion();
   const [addDeliveryOpen, setAddDeliveryOpen] = useState(false);
@@ -41,7 +42,7 @@ function TreeViewContent() {
   );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const canPasteCountryAtRoot = canPasteInto(null);
+  const canPasteCountryAtRoot = canMutate && canPasteInto(null);
 
   useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {
@@ -257,7 +258,7 @@ function TreeViewContent() {
                   ? "No project names yet. Use the menu on a country in the tree to add a project name, then add deliveries."
                   : "No deliveries yet. Add your first delivery to start building the CAPEX tree."}
               </p>
-              {activeProjectName && (
+              {canMutate && activeProjectName && (
                 <Button size="sm" onClick={() => setAddDeliveryOpen(true)}>
                   <Plus className="mr-1 h-4 w-4" />
                   Add Delivery

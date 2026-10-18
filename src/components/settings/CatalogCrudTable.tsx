@@ -57,6 +57,8 @@ interface CatalogCrudTableProps<T extends { id: string }> {
   onDelete: (id: string) => void;
   canSubmitAdd: boolean;
   pageSize?: number;
+  /** When true, hide add/edit/delete controls (viewer role). */
+  readOnly?: boolean;
 }
 
 type SortDirection = "asc" | "desc";
@@ -78,6 +80,7 @@ export function CatalogCrudTable<T extends { id: string }>({
   onDelete,
   canSubmitAdd,
   pageSize = 10,
+  readOnly = false,
 }: CatalogCrudTableProps<T>) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -150,10 +153,14 @@ export function CatalogCrudTable<T extends { id: string }>({
             <h3 className="text-base font-semibold">{title}</h3>
             <p className="text-sm text-muted-foreground">{description}</p>
           </div>
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" />
-            {addLabel}
-          </Button>
+          {readOnly ? (
+            <span className="text-xs text-muted-foreground">View only</span>
+          ) : (
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              <Plus className="mr-1 h-4 w-4" />
+              {addLabel}
+            </Button>
+          )}
         </div>
 
         <div className="relative max-w-md">
@@ -192,14 +199,16 @@ export function CatalogCrudTable<T extends { id: string }>({
                     )}
                   </TableHead>
                 ))}
-                <TableHead className="w-[88px] text-right">Actions</TableHead>
+                {readOnly ? null : (
+                  <TableHead className="w-[88px] text-right">Actions</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
               {pageItems.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={columns.length + 1}
+                    colSpan={columns.length + (readOnly ? 0 : 1)}
                     className="h-24 text-center text-muted-foreground"
                   >
                     {emptyMessage}
@@ -213,28 +222,30 @@ export function CatalogCrudTable<T extends { id: string }>({
                         {column.render(item)}
                       </TableCell>
                     ))}
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        {renderEditForm ? (
+                    {readOnly ? null : (
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {renderEditForm ? (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => setEditItem(item)}
+                              aria-label="Edit entry"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          ) : null}
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            onClick={() => setEditItem(item)}
-                            aria-label="Edit entry"
+                            onClick={() => setDeleteItem(item)}
+                            aria-label="Delete entry"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4 text-muted-foreground" />
                           </Button>
-                        ) : null}
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => setDeleteItem(item)}
-                          aria-label="Delete entry"
-                        >
-                          <Trash2 className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}

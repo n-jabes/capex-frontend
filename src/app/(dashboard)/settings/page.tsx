@@ -82,7 +82,11 @@ export default function SettingsPage() {
     isHydrated,
     apiEnabled,
     importCapex1Template,
+    canMutate,
+    canManageOrg,
+    membershipRole,
   } = useCapex();
+  const readOnly = !canMutate;
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("countries");
   const [importing, setImporting] = useState(false);
@@ -192,6 +196,7 @@ export default function SettingsPage() {
               })),
             }))}
             onAddCountry={addCountry}
+            readOnly={readOnly}
           />
         );
       case "projectNames":
@@ -204,6 +209,7 @@ export default function SettingsPage() {
             nameLabel="Project name"
             placeholder="e.g. YAS CAPEX"
             idPrefix="proj"
+            readOnly={readOnly}
             onAdd={(item) =>
               patchCatalog("projectNames", (items) => [...items, item])
             }
@@ -225,6 +231,7 @@ export default function SettingsPage() {
             nameLabel="Delivery name"
             placeholder="e.g. Software"
             idPrefix="del"
+            readOnly={readOnly}
             onAdd={(item) =>
               patchCatalog("deliveries", (items) => [...items, item])
             }
@@ -242,6 +249,7 @@ export default function SettingsPage() {
             deliveries={catalogs.deliveries}
             domains={catalogs.domains}
             mapping={settings.relationships.deliveryDomains}
+            readOnly={readOnly}
             onAddDomain={(item) =>
               patchCatalog("domains", (items) => [...items, item])
             }
@@ -269,6 +277,7 @@ export default function SettingsPage() {
             domains={catalogs.domains}
             nodes={catalogs.nodes}
             mapping={settings.relationships.domainNodes}
+            readOnly={readOnly}
             onAddNode={(item) =>
               patchCatalog("nodes", (items) => [...items, item])
             }
@@ -300,6 +309,7 @@ export default function SettingsPage() {
             nameLabel="Vendor name"
             placeholder="e.g. Ericsson"
             idPrefix="vendor"
+            readOnly={readOnly}
             onAdd={(item) =>
               patchCatalog("vendors", (items) => [...items, item])
             }
@@ -317,6 +327,7 @@ export default function SettingsPage() {
             items={catalogs.vendorNodeNames}
             nodes={catalogs.nodes}
             vendors={catalogs.vendors}
+            readOnly={readOnly}
             onAdd={(item) =>
               patchCatalog("vendorNodeNames", (items) => [...items, item])
             }
@@ -340,6 +351,7 @@ export default function SettingsPage() {
             items={catalogs.packages}
             vendorNodeNames={catalogs.vendorNodeNames}
             vendors={catalogs.vendors}
+            readOnly={readOnly}
             onAdd={(item) =>
               patchCatalog("packages", (items) => [...items, item])
             }
@@ -365,6 +377,7 @@ export default function SettingsPage() {
               id: country.id,
               name: country.name,
             }))}
+            readOnly={readOnly}
             onUpdateRelationships={(updater) =>
               patchRelationships(updater)
             }
@@ -391,7 +404,15 @@ export default function SettingsPage() {
           <h2 className="text-xl font-semibold tracking-tight">Settings</h2>
           <p className="text-sm text-muted-foreground">
             ID-based catalogs for the CAPEX platform.
+            {apiEnabled && membershipRole
+              ? ` Role: ${membershipRole}.`
+              : ""}
           </p>
+          {readOnly ? (
+            <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-900 dark:text-amber-100">
+              View-only access — catalog edits are disabled for your role.
+            </p>
+          ) : null}
         </div>
 
         <nav className="space-y-4 rounded-lg border bg-card p-2 shadow-sm">
@@ -430,7 +451,7 @@ export default function SettingsPage() {
       </aside>
 
       <main className="min-w-0 flex-1 space-y-4">
-        {apiEnabled ? (
+        {apiEnabled && canManageOrg ? (
           <div className="rounded-lg border bg-card p-4 shadow-sm">
             <h3 className="text-sm font-semibold">Sample data (optional)</h3>
             <p className="mt-1 text-sm text-muted-foreground">
