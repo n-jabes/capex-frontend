@@ -10,10 +10,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { useCapex } from "@/context/CapexContext";
 import { DimensionPicker } from "@/components/benchmarking/DimensionPicker";
 import { BenchmarkItemPicker } from "@/components/benchmarking/BenchmarkItemPicker";
 import { ComparisonResultsView } from "@/components/benchmarking/ComparisonResultsView";
+import {
+  createBenchmarkScenario,
+  deleteBenchmarkScenario,
+  listBenchmarkScenarios,
+  type BenchmarkScenario,
+} from "@/lib/api/capex-api";
 import {
   buildComparison,
   collectCandidates,
@@ -29,8 +36,9 @@ import {
 const DEFAULT_DIMENSION: BenchmarkDimension = "countries";
 
 export function BenchmarkCompareWorkspace() {
-  const { tree, settings } = useCapex();
+  const { tree, settings, apiEnabled } = useCapex();
   const [hydrated, setHydrated] = useState(false);
+  const [scenarios, setScenarios] = useState<BenchmarkScenario[]>([]);
   const [dimension, setDimension] =
     useState<BenchmarkDimension>(DEFAULT_DIMENSION);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -55,6 +63,13 @@ export function BenchmarkCompareWorkspace() {
     }
     setHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (!apiEnabled) return;
+    void listBenchmarkScenarios()
+      .then(setScenarios)
+      .catch(() => undefined);
+  }, [apiEnabled]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -228,8 +243,94 @@ export function BenchmarkCompareWorkspace() {
     onToggleExpand: () => setExpanded((v) => !v),
   } as const;
 
+  const currentPayload = {
+    dimension,
+    selectedIds,
+    licensePackageFilter,
+    yearFilter,
+    baselineId,
+    sortByPrice,
+    showDeltas,
+  };
+
+  const onSaveScenario = async () => {
+    if (!apiEnabled) {
+      toast.error("Saved scenarios require API mode");
+      return;
+    }
+    const name = window.prompt("Scenario name");
+    if (!name?.trim()) return;
+    try {
+      const created = await createBenchmarkScenario(name.trim(), currentPayload);
+      setScenarios((prev) => [created, ...prev]);
+      toast.success("Scenario saved");
+    } catch {
+      toast.error("Could not save scenario");
+    }
+  };
+
+  const onLoadScenario = (scenario: BenchmarkScenario) => {
+    const payload = scenario.payload as Partial<typeof currentPayload>;
+    if (payload.dimension) setDimension(payload.dimension);
+    if (payload.selectedIds) setSelectedIds(payload.selectedIds);
+    if (payload.licensePackageFilter != null) {
+      setLicensePackageFilter(payload.licensePackageFilter);
+    }
+    if (payload.yearFilter != null) setYearFilter(payload.yearFilter);
+    if (payload.baselineId !== undefined) setBaselineId(payload.baselineId);
+    if (payload.sortByPrice != null) setSortByPrice(payload.sortByPrice);
+    if (payload.showDeltas != null) setShowDeltas(payload.showDeltas);
+    toast.message(`Loaded “${scenario.name}”`);
+  };
+
   return (
     <div className="space-y-6 p-4 md:p-6">
+      {apiEnabled ? (
+        <section className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
+          <p className="mr-auto text-xs text-muted-foreground">
+            Named comparisons saved to your workspace.
+          </p>
+          <Button size="sm" variant="outline" onClick={() => void onSaveScenario()}>
+            Save scenario
+          </Button>
+          {scenarios.length > 0 ? (
+            <select
+              className="h-8 max-w-[220px] rounded-md border bg-background px-2 text-xs"
+              defaultValue=""
+              onChange={(e) => {
+                const row = scenarios.find((s) => s.id === e.target.value);
+                if (row) onLoadScenario(row);
+                e.target.value = "";
+              }}
+            >
+              <option value="">Load scenario…</option>
+              {scenarios.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {scenarios[0] ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                const id = scenarios[0].id;
+                if (!window.confirm(`Delete “${scenarios[0].name}”?`)) return;
+                void deleteBenchmarkScenario(id)
+                  .then(() => {
+                    setScenarios((prev) => prev.filter((s) => s.id !== id));
+                  })
+                  .catch(() => toast.error("Could not delete scenario"));
+              }}
+            >
+              Delete latest
+            </Button>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="space-y-3">
         <div>
           <h2 className="text-sm font-medium">1. Choose a dimension</h2>

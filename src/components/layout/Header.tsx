@@ -5,8 +5,16 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useCapex } from "@/context/CapexContext";
-import { logout } from "@/lib/api/auth-api";
+import { logout, resendVerification } from "@/lib/api/auth-api";
+import { getStoredLocale, t, type Locale } from "@/lib/i18n";
 import { roleLabel } from "@/lib/roles";
 
 const FLUSH_TIMEOUT_MS = 1500;
@@ -48,19 +56,29 @@ export function Header() {
     syncError,
     portfolioId,
     portfolioVersion,
+    portfolios,
     reloadFromServer,
     flushPendingSaves,
     clearSessionState,
     canMutate,
     membershipRole,
     organizationName,
+    emailVerifiedAt,
+    switchPortfolio,
+    createPortfolioScenario,
+    cloneActivePortfolio,
   } = useCapex();
 
+  const [locale, setLocale] = useState<Locale>("en");
   const [signingOut, setSigningOut] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [badgeVisible, setBadgeVisible] = useState(
     () => syncStatus !== "synced" && syncStatus !== "local",
   );
+
+  useEffect(() => {
+    setLocale(getStoredLocale());
+  }, []);
 
   useEffect(() => {
     if (
@@ -83,7 +101,6 @@ export function Header() {
       return () => window.clearTimeout(timer);
     }
 
-    // Idle local mode — stay quiet.
     setBadgeVisible(false);
   }, [syncStatus]);
 
@@ -155,81 +172,158 @@ export function Header() {
     syncStatus === "loading";
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-6">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
-          CV
-        </div>
-        <div className="min-w-0">
-          <h1 className="truncate text-base font-semibold tracking-tight">
-            Axian Telecom Capacity and Pricing
-          </h1>
-          {apiEnabled && organizationName ? (
-            <p className="truncate text-xs text-muted-foreground">
-              {organizationName}
-              {membershipRole ? ` · ${roleLabel(membershipRole)}` : ""}
-            </p>
-          ) : null}
-        </div>
-      </div>
-      <div className="flex max-w-[65%] items-center gap-2">
-        {syncError ? (
-          <span
-            className="hidden truncate text-xs text-destructive lg:inline"
-            title={syncError}
-          >
-            {syncError}
-          </span>
-        ) : null}
-        {apiEnabled && (syncStatus === "error" || syncStatus === "conflict") ? (
+    <div className="shrink-0 border-b bg-card">
+      {apiEnabled && !emailVerifiedAt ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 bg-amber-500/10 px-6 py-1.5 text-xs text-amber-950 dark:text-amber-100">
+          <span>{t("auth.verifyBanner", locale)}</span>
           <Button
-            size="sm"
+            size="xs"
             variant="outline"
             onClick={() => {
-              void reloadFromServer();
+              void resendVerification()
+                .then((result) => {
+                  if (result.devVerifyUrl) {
+                    toast.message("Dev verify link", {
+                      description: result.devVerifyUrl,
+                    });
+                  } else {
+                    toast.success("Verification email sent");
+                  }
+                })
+                .catch(() => toast.error("Could not resend verification"));
             }}
           >
-            Reload
+            {t("auth.resend", locale)}
           </Button>
-        ) : null}
-        {apiEnabled && !canMutate ? (
-          <Badge variant="outline" className="font-normal text-amber-700">
-            Read-only{membershipRole ? ` · ${roleLabel(membershipRole)}` : ""}
-          </Badge>
-        ) : null}
-        <Button size="sm" variant="outline" onClick={onExport}>
-          Export JSON
-        </Button>
-        {showBadge ? (
-          <Badge
-            variant={
-              syncStatus === "error" || syncStatus === "conflict"
-                ? "destructive"
-                : "secondary"
-            }
-            className="font-normal transition-opacity"
-          >
-            {syncLabel(syncStatus, savedAt)}
-            {apiEnabled &&
-            portfolioVersion != null &&
-            (syncStatus === "saving" ||
-              syncStatus === "error" ||
-              syncStatus === "conflict")
-              ? ` · v${portfolioVersion}`
-              : ""}
-          </Badge>
-        ) : null}
-        {apiEnabled ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={signingOut}
-            onClick={() => void onLogout()}
-          >
-            {signingOut ? "Signing out…" : "Sign out"}
+        </div>
+      ) : null}
+      <header className="flex h-14 items-center justify-between px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
+            CV
+          </div>
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold tracking-tight">
+              {organizationName || "Axian Telecom Capacity and Pricing"}
+            </h1>
+            {apiEnabled ? (
+              <p className="truncate text-xs text-muted-foreground">
+                {membershipRole ? roleLabel(membershipRole) : ""}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex max-w-[70%] items-center gap-2">
+          {apiEnabled && portfolios.length > 0 ? (
+            <div className="hidden items-center gap-1 md:flex">
+              <Select
+                value={portfolioId ?? undefined}
+                onValueChange={(value) => {
+                  if (value) void switchPortfolio(value);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[160px] text-xs">
+                  <SelectValue placeholder={t("header.portfolio", locale)} />
+                </SelectTrigger>
+                <SelectContent>
+                  {portfolios.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {canMutate ? (
+                <>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      const name = window.prompt("New portfolio name");
+                      if (!name?.trim()) return;
+                      void createPortfolioScenario(name.trim()).then(() =>
+                        toast.success("Portfolio created"),
+                      );
+                    }}
+                  >
+                    New
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      void cloneActivePortfolio().then(() =>
+                        toast.success("Portfolio cloned"),
+                      );
+                    }}
+                  >
+                    Clone
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {syncError ? (
+            <span
+              className="hidden truncate text-xs text-destructive lg:inline"
+              title={syncError}
+            >
+              {syncError}
+            </span>
+          ) : null}
+          {apiEnabled && (syncStatus === "error" || syncStatus === "conflict") ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                void reloadFromServer();
+              }}
+            >
+              Reload
+            </Button>
+          ) : null}
+          {apiEnabled && !canMutate ? (
+            <Badge variant="outline" className="font-normal text-amber-700">
+              {t("header.readOnly", locale)}
+              {membershipRole ? ` · ${roleLabel(membershipRole)}` : ""}
+            </Badge>
+          ) : null}
+          <Button size="sm" variant="outline" onClick={onExport}>
+            {t("header.export", locale)}
           </Button>
-        ) : null}
-      </div>
-    </header>
+          {showBadge ? (
+            <Badge
+              variant={
+                syncStatus === "error" || syncStatus === "conflict"
+                  ? "destructive"
+                  : "secondary"
+              }
+              className="font-normal transition-opacity"
+            >
+              {syncLabel(syncStatus, savedAt)}
+              {apiEnabled &&
+              portfolioVersion != null &&
+              (syncStatus === "saving" ||
+                syncStatus === "error" ||
+                syncStatus === "conflict")
+                ? ` · v${portfolioVersion}`
+                : ""}
+            </Badge>
+          ) : null}
+          {apiEnabled ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={signingOut}
+              onClick={() => void onLogout()}
+            >
+              {signingOut
+                ? t("header.signingOut", locale)
+                : t("header.signOut", locale)}
+            </Button>
+          ) : null}
+        </div>
+      </header>
+    </div>
   );
 }

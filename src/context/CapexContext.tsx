@@ -20,15 +20,19 @@ import {
 } from "@/lib/api/client";
 import { getMe } from "@/lib/api/auth-api";
 import {
+  clonePortfolio,
+  createPortfolio,
   getMyCatalogs,
   getMyOrganization,
   getPortfolio,
   importCatalogTemplate,
   listPortfolios,
+  openPortfolio,
   patchMyCatalogs,
   putMyCatalogs,
   renameOrganization,
   updatePortfolioTree,
+  type PortfolioSummary,
 } from "@/lib/api/capex-api";
 import { isCapexApiConfigured } from "@/lib/api/config";
 import {
@@ -113,11 +117,13 @@ interface CapexContextValue {
   syncError: string | null;
   portfolioId: string | null;
   portfolioVersion: number | null;
+  portfolios: PortfolioSummary[];
   apiEnabled: boolean;
   catalogVersion: number | null;
   /** Null in local demo mode. */
   membershipRole: MembershipRole | string | null;
   currentUserEmail: string | null;
+  emailVerifiedAt: string | null;
   /** Workspace display name; null in local demo mode. */
   organizationName: string | null;
   /** False for viewer (API mode). Always true in local demo mode. */
@@ -128,6 +134,9 @@ interface CapexContextValue {
   flushPendingSaves: () => Promise<void>;
   importCapex1Template: (replaceTree?: boolean) => Promise<void>;
   renameWorkspace: (name: string) => Promise<void>;
+  switchPortfolio: (id: string) => Promise<void>;
+  createPortfolioScenario: (name: string) => Promise<void>;
+  cloneActivePortfolio: (name?: string) => Promise<void>;
   clearSessionState: () => void;
   setSelectedNode: (node: SelectedNode | null) => void;
   addChild: (parentId: string, child: CapexTreeNode) => void;
@@ -221,7 +230,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
   const [catalogVersion, setCatalogVersion] = useState<number | null>(null);
   const [membershipRole, setMembershipRole] = useState<string | null>(null);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null);
   const [organizationName, setOrganizationName] = useState<string | null>(null);
+  const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
 
   const skipPersistRef = useRef(false);
   const skipCatalogPersistRef = useRef(false);
@@ -276,14 +287,21 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       ]);
       setMembershipRole(me.role);
       setCurrentUserEmail(me.email);
+      setEmailVerifiedAt(me.emailVerifiedAt ?? null);
       setOrganizationName(org.name);
+      setPortfolios(summaries);
       membershipRoleRef.current = me.role;
       if (summaries.length === 0) {
         throw new Error(
           "No portfolio found for this account. Try signing out and registering again.",
         );
       }
-      const detail = await getPortfolio(summaries[0].id);
+      const preferredId =
+        me.lastPortfolioId &&
+        summaries.some((row) => row.id === me.lastPortfolioId)
+          ? me.lastPortfolioId
+          : summaries[0].id;
+      const detail = await getPortfolio(preferredId);
       const rawTree = Array.isArray(detail.tree) ? detail.tree : [];
       skipPersistRef.current = true;
       skipCatalogPersistRef.current = true;
@@ -720,6 +738,59 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     [apiEnabled],
   );
 
+  const switchPortfolio = useCallback(
+    async (id: string) => {
+      if (!apiEnabled || !apiHydrated) return;
+      if (id === portfolioIdRef.current) return;
+      await flushPendingSaves();
+      setSyncStatus("loading");
+      try {
+        const detail = await getPortfolio(id);
+        skipPersistRef.current = true;
+        const normalizedTree = normalizeTree(
+          Array.isArray(detail.tree) ? detail.tree : [],
+        );
+        setTreeApi(normalizedTree);
+        lastSyncedTreeRef.current = cloneTree(normalizedTree);
+        setPortfolioId(detail.id);
+        setPortfolioVersion(detail.version);
+        portfolioIdRef.current = detail.id;
+        versionRef.current = detail.version;
+        await openPortfolio(id).catch(() => undefined);
+        setSyncStatus("synced");
+        setSyncError(null);
+      } catch (error) {
+        setSyncStatus("error");
+        setSyncError(
+          error instanceof Error ? error.message : "Could not open portfolio",
+        );
+      }
+    },
+    [apiEnabled, apiHydrated, flushPendingSaves],
+  );
+
+  const createPortfolioScenario = useCallback(
+    async (name: string) => {
+      if (!apiEnabled) return;
+      await flushPendingSaves();
+      const created = await createPortfolio(name);
+      setPortfolios(await listPortfolios());
+      await switchPortfolio(created.id);
+    },
+    [apiEnabled, flushPendingSaves, switchPortfolio],
+  );
+
+  const cloneActivePortfolio = useCallback(
+    async (name?: string) => {
+      if (!apiEnabled || !portfolioIdRef.current) return;
+      await flushPendingSaves();
+      const created = await clonePortfolio(portfolioIdRef.current, name);
+      setPortfolios(await listPortfolios());
+      await switchPortfolio(created.id);
+    },
+    [apiEnabled, flushPendingSaves, switchPortfolio],
+  );
+
   const clearSessionState = useCallback(() => {
     skipPersistRef.current = true;
     skipCatalogPersistRef.current = true;
@@ -730,7 +801,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
     setCatalogVersion(null);
     setMembershipRole(null);
     setCurrentUserEmail(null);
+    setEmailVerifiedAt(null);
     setOrganizationName(null);
+    setPortfolios([]);
     lastSyncedSettingsRef.current = null;
     lastSyncedTreeRef.current = null;
     membershipRoleRef.current = null;
@@ -1009,10 +1082,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       syncError,
       portfolioId,
       portfolioVersion,
+      portfolios,
       catalogVersion,
       apiEnabled,
       membershipRole,
       currentUserEmail,
+      emailVerifiedAt,
       organizationName,
       canMutate,
       canManageOrg,
@@ -1020,6 +1095,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       flushPendingSaves,
       importCapex1Template,
       renameWorkspace,
+      switchPortfolio,
+      createPortfolioScenario,
+      cloneActivePortfolio,
       clearSessionState,
       setSelectedNode,
       addChild,
@@ -1049,10 +1127,12 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       syncError,
       portfolioId,
       portfolioVersion,
+      portfolios,
       catalogVersion,
       apiEnabled,
       membershipRole,
       currentUserEmail,
+      emailVerifiedAt,
       organizationName,
       canMutate,
       canManageOrg,
@@ -1060,6 +1140,9 @@ export function CapexProvider({ children }: { children: ReactNode }) {
       flushPendingSaves,
       importCapex1Template,
       renameWorkspace,
+      switchPortfolio,
+      createPortfolioScenario,
+      cloneActivePortfolio,
       clearSessionState,
       setSelectedNode,
       addChild,

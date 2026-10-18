@@ -8,6 +8,7 @@ import {
   Link2,
   Network,
   Package,
+  ScrollText,
   Server,
   Settings2,
   Truck,
@@ -17,6 +18,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCapex } from "@/context/CapexContext";
+import { AuditLogPanel } from "@/components/settings/AuditLogPanel";
 import { OrganizationMembersPanel } from "@/components/settings/OrganizationMembersPanel";
 import { CountriesSection } from "@/components/settings/SettingsSections";
 import {
@@ -34,6 +36,7 @@ import type { AppCatalogs, CatalogItem, VendorNodeNameCatalogItem } from "@/type
 
 type SettingsSectionId =
   | "organization"
+  | "audit"
   | "countries"
   | "projectNames"
   | "deliveries"
@@ -54,6 +57,12 @@ const NAV_ITEMS: Array<{
     id: "organization",
     label: "Organization",
     icon: Building2,
+    group: "workspace",
+  },
+  {
+    id: "audit",
+    label: "Audit log",
+    icon: ScrollText,
     group: "workspace",
   },
   { id: "countries", label: "Countries", icon: Globe2, group: "tree" },
@@ -207,6 +216,14 @@ export default function SettingsPage() {
         ) : (
           <p className="text-sm text-muted-foreground">
             Organization members require API mode.
+          </p>
+        );
+      case "audit":
+        return apiEnabled && canManageOrg ? (
+          <AuditLogPanel />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Audit history is available to owners and admins in API mode.
           </p>
         );
       case "countries":
@@ -445,7 +462,8 @@ export default function SettingsPage() {
             const items = NAV_ITEMS.filter(
               (item) =>
                 item.group === group &&
-                (item.id !== "organization" || apiEnabled),
+                (item.id !== "organization" || apiEnabled) &&
+                (item.id !== "audit" || (apiEnabled && canManageOrg)),
             );
             if (items.length === 0) return null;
             return (
@@ -521,9 +539,11 @@ export default function SettingsPage() {
           <p className="text-sm text-muted-foreground">
             {activeSection === "organization"
               ? "Invite teammates and manage member roles for this workspace."
-              : activeSection === "relationships"
-                ? "Configure reusable many-to-many mappings between catalog entries."
-                : "Manage catalog entries with search, sort, and pagination."}
+              : activeSection === "audit"
+                ? "Filterable history of membership, catalog, and tree changes."
+                : activeSection === "relationships"
+                  ? "Configure reusable many-to-many mappings between catalog entries."
+                  : "Manage catalog entries with search, sort, and pagination."}
           </p>
         </div>
         {renderSection()}
