@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,22 +15,30 @@ import {
 import { CapexApiError } from "@/lib/api/client";
 import { listOrgAudit, type AuditEventRow } from "@/lib/api/capex-api";
 
+const PAGE_SIZE = 10;
+
 export function AuditLogPanel() {
   const [items, setItems] = useState<AuditEventRow[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  /** Cursor to request for each page index (0 = start). */
+  const cursorsRef = useRef<Array<string | undefined>>([undefined]);
 
-  const load = useCallback(async (next?: string | null, append = false) => {
-    if (append) setLoadingMore(true);
-    else setLoading(true);
+  const loadPage = useCallback(async (pageIndex: number) => {
+    setLoading(true);
     try {
-      const page = await listOrgAudit({
-        cursor: next ?? undefined,
-        take: 40,
+      const cursor = cursorsRef.current[pageIndex];
+      const result = await listOrgAudit({
+        cursor,
+        take: PAGE_SIZE,
       });
-      setItems((prev) => (append ? [...prev, ...page.items] : page.items));
-      setCursor(page.nextCursor);
+      setItems(result.items);
+      setHasNext(Boolean(result.nextCursor));
+      if (result.nextCursor) {
+        cursorsRef.current[pageIndex + 1] = result.nextCursor;
+      }
+      setPage(pageIndex);
     } catch (error) {
       toast.error("Could not load audit log", {
         description:
@@ -38,13 +46,12 @@ export function AuditLogPanel() {
       });
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadPage(0);
+  }, [loadPage]);
 
   const onExportCsv = () => {
     const header = ["createdAt", "action", "user", "entityType", "entityId"];
@@ -70,14 +77,9 @@ export function AuditLogPanel() {
     URL.revokeObjectURL(url);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading audit history…
-      </div>
-    );
-  }
+  const rangeStart = items.length === 0 ? 0 : page * PAGE_SIZE + 1;
+  const rangeEnd = page * PAGE_SIZE + items.length;
+  const showPager = page > 0 || hasNext;
 
   return (
     <div className="space-y-4">
@@ -89,7 +91,7 @@ export function AuditLogPanel() {
           type="button"
           size="sm"
           variant="outline"
-          disabled={items.length === 0}
+          disabled={items.length === 0 || loading}
           onClick={onExportCsv}
         >
           Export CSV
@@ -106,7 +108,16 @@ export function AuditLogPanel() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.length === 0 ? (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={4}>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading audit history…
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-muted-foreground">
                   No audit events yet.
@@ -118,7 +129,9 @@ export function AuditLogPanel() {
                   <TableCell className="whitespace-nowrap text-xs">
                     {new Date(row.createdAt).toLocaleString()}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{row.action}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {row.action}
+                  </TableCell>
                   <TableCell className="text-sm">
                     {row.user?.email ?? "—"}
                   </TableCell>
@@ -132,16 +145,36 @@ export function AuditLogPanel() {
           </TableBody>
         </Table>
       </div>
-      {cursor ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          disabled={loadingMore}
-          onClick={() => void load(cursor, true)}
-        >
-          {loadingMore ? "Loading…" : "Load more"}
-        </Button>
+      {showPager ? (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            {items.length === 0
+              ? "No entries"
+              : `Showing ${rangeStart}–${rangeEnd}`}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={loading || page === 0}
+              onClick={() => void loadPage(page - 1)}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={loading || !hasNext}
+              onClick={() => void loadPage(page + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      ) : items.length > 0 && !loading ? (
+        <p className="text-xs text-muted-foreground">
+          {items.length} entr{items.length === 1 ? "y" : "ies"}
+        </p>
       ) : null}
     </div>
   );

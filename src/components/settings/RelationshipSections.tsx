@@ -176,7 +176,10 @@ export function SourceTargetMappingEditor({
                 onValueChange={(value) => setCopySourceId(value ?? "")}
               >
                 <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Copy from..." />
+                  <SelectValue placeholder="Copy from...">
+                    {sources.find((item) => item.id === copySourceId)?.name ||
+                      "Copy from..."}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {sources
@@ -312,7 +315,12 @@ export function NodeVendorMatrixSection({
             onValueChange={(value) => setDomainFilterId(value ?? "all")}
           >
             <SelectTrigger>
-              <SelectValue />
+              <SelectValue>
+                {domainFilterId === "all"
+                  ? "All nodes"
+                  : domains.find((d) => d.id === domainFilterId)?.name ||
+                    "All nodes"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All nodes</SelectItem>
